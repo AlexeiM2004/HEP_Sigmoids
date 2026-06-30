@@ -10,7 +10,6 @@ import os
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 import torch
-print(torch.cuda.is_available())
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
@@ -27,20 +26,27 @@ X.shape #Already in the transformer shape we need i.e. Ndata x Ntokens x Nfeatur
 
 target = np.concatenate([np.ones(signal.shape[0]), np.zeros(background.shape[0])], axis=0)
 
-X_train, X_test, Y_train, Y_test = train_test_split(X, target, test_size=0.15, random_state=42)
+X_train, X_test, Y_train, Y_test = train_test_split(X, target, test_size=0.20, random_state=42)
+X_test, X_val, Y_test, Y_val = train_test_split(X_test, Y_test, test_size=0.50, random_state=42)
 
 scaler = StandardScaler()
 scaler.fit(X_train.reshape(-1, 5))
 X_scaled = scaler.transform(X_train.reshape(-1, 5))
 X_scaled = X_scaled.reshape(X_train.shape)
+
+X_val_scaled = scaler.transform(X_val.reshape(-1, 5))
+X_val_scaled = X_val_scaled.reshape(X_val.shape)
+
 X_test_scaled = scaler.transform(X_test.reshape(-1, 5))
 X_test_scaled = X_test_scaled.reshape(X_test.shape)
 
 X_train_tensor = torch.tensor(X_scaled,dtype=torch.float32)
 X_test_tensor = torch.tensor(X_test_scaled,dtype=torch.float32)
+X_val_tensor = torch.tensor(X_val_scaled,dtype=torch.float32)
 
 Y_train_tensor = torch.tensor(Y_train.reshape(-1,1), dtype=torch.float32)
 Y_test_tensor = torch.tensor(Y_test.reshape(-1,1), dtype=torch.float32)
+Y_val_tensor = torch.tensor(Y_val.reshape(-1,1),dtype=torch.float32)
 
 class JetTransformer(nn.Module):
   def __init__(self, in_dim, nhead, num_layers):
@@ -78,19 +84,43 @@ class JetTransformer(nn.Module):
 # Load the train and test datasets in TensorDataset
 from torch.utils.data import TensorDataset, DataLoader
 train_dataset = TensorDataset(X_train_tensor, Y_train_tensor)
+val_dataset = TensorDataset(X_val_tensor, Y_val_tensor)
 test_dataset = TensorDataset(X_test_tensor, Y_test_tensor)
 # Dataloaders
 train_loader = DataLoader(train_dataset, batch_size=8192, shuffle=True, pin_memory=True)
+val_loader = DataLoader(val_dataset, batch_size=8192, shuffle=False, pin_memory=True)
 test_loader = DataLoader(test_dataset, batch_size=8192, shuffle=False, pin_memory=True)
-    
+
+class EarlyStopping:
+  def __init__(self, patience=5, min_delta=0, tolerance = 100):
+    self.patience = patience        # How many epochs to wait
+    self.min_delta = min_delta      # Minimum improvement to count
+    self.tolerance = tolerance      # Minimum spiking for counter to not increase
+    self.counter = 0
+    self.best_loss = float('inf')
+    self.early_stop = False
+
+  def __call__(self, val_loss):
+    if self.best_loss - val_loss > self.min_delta:
+      self.best_loss = val_loss
+      self.counter = 0  # Reset counter if improvement
+    else:
+      if val_loss - self.best_loss < self.tolerance:
+        self.counter += 1
+
+      if self.counter >= self.patience:
+        self.early_stop = True
+
 model = JetTransformer(in_dim=5, nhead=2, num_layers=2)
 model = model.to(device)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 criterion = nn.BCELoss()
+Earl = EarlyStopping(5,0.0005, 0.01)
 
-N_epochs = 30
+N_epochs = 100
 train_losses = []
+val_losses = []
 
 print("Beginning training")
 print()
@@ -98,8 +128,8 @@ print()
 for epoch in range(N_epochs):
   model.train()
   running_loss = 0.0
-  for inputs, targets in train_loader:
-    X_batch, Y_batch = inputs.to(device), targets.to(device)
+  for X_batch, Y_batch in train_loader:
+    X_batch, Y_batch = X_batch.to(device), Y_batch.to(device)
     optimizer.zero_grad()
     outputs = model(X_batch)
     loss = criterion(outputs, Y_batch)
@@ -109,11 +139,35 @@ for epoch in range(N_epochs):
 
   train_loss = running_loss / len(train_loader.dataset)
   train_losses.append(train_loss)
-  print(f"Epoch {epoch+1}, Train Loss: {train_loss:.4f}")
+
+  model.eval()
+  running_val_loss = 0.0
+  with torch.no_grad():
+    for inputs, targets in val_loader:
+      inputs, targets = inputs.to(device), targets.to(device)
+      val_predictions = model(inputs)
+      batch_val_loss = criterion(val_predictions, targets).item()
+      running_val_loss += batch_val_loss * inputs.size(0)
+
+    val_loss = running_val_loss / len(val_loader.dataset)
+    val_losses.append(val_loss)
+
+  Earl(val_loss)
+  if Earl.early_stop:
+    print("-------------------------")
+    print("Early stopping triggered.")
+    print(f'Final Epoch [{epoch +1}/{N_epochs}]')
+    print(f'Training Loss: {train_loss:.4f}')
+    print(f'Validation Loss: {val_loss:.4f}')
+    print("-------------------------")
+    break
+
+  print(f"Epoch {epoch+1}, Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}")
   torch.cuda.empty_cache()
 
 import matplotlib.pyplot as plt
 plt.plot(train_losses, label='Train Loss')
+plt.plot(val_losses, label = 'Validation')
 plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.legend()
@@ -122,15 +176,24 @@ plt.show()
 model.eval()
 list_of_predictions = []
 with torch.no_grad():
-    for inputs, targets in test_loader:
-        inputs, targets = inputs.to(device), targets.to(device)  # if using GPU
-
-        outputs = model(inputs)
-        list_of_predictions.append(outputs)
-        loss = criterion(outputs, targets)
+  for inputs, targets in test_loader:
+    inputs, targets = inputs.to(device), targets.to(device)  # if using GPU
+    outputs = model(inputs)
+    list_of_predictions.append(outputs)
+    loss = criterion(outputs, targets)
 
 pred = torch.concatenate(list_of_predictions)
 Y_pred = torch.round(pred).detach().cpu().numpy()
 
+from sklearn.metrics import accuracy_score
+acc = accuracy_score(Y_test.reshape(-1,1), Y_pred)
+print(f'Accuracy rating: {acc:.4f}%')
+
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+
+cm = confusion_matrix(Y_test.reshape(-1,1), Y_pred, normalize = 'true')
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Background", 'Signal'])
+plt.plot()
+
 from sklearn.metrics import roc_auc_score
-print(roc_auc_score(Y_test.reshape(-1,1),Y_pred))
+print(f'Roc Auc score: {roc_auc_score(Y_test.reshape(-1,1),Y_pred):.4f}')
