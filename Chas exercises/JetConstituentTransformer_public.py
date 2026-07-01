@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import torch.nn as nn
 import torch.nn.functional as F
+import time
 
 import os
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
@@ -116,7 +117,7 @@ model = model.to(device)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 criterion = nn.BCELoss()
-Earl = EarlyStopping(5,0.0005, 0.01)
+Earl = EarlyStopping(7,0.001, 0.01)
 
 N_epochs = 100
 train_losses = []
@@ -125,6 +126,7 @@ val_losses = []
 print("Beginning training")
 print()
 
+start_time = time.perf_counter()
 for epoch in range(N_epochs):
   model.train()
   running_loss = 0.0
@@ -152,6 +154,9 @@ for epoch in range(N_epochs):
     val_loss = running_val_loss / len(val_loader.dataset)
     val_losses.append(val_loss)
 
+  end_time = time.perf_counter()
+  epoch_mins = (end_time - start_time) / 60
+
   Earl(val_loss)
   if Earl.early_stop:
     print("-------------------------")
@@ -159,10 +164,11 @@ for epoch in range(N_epochs):
     print(f'Final Epoch [{epoch +1}/{N_epochs}]')
     print(f'Training Loss: {train_loss:.4f}')
     print(f'Validation Loss: {val_loss:.4f}')
+    print(f'Training Time: {epoch_mins:.2f} minutes')
     print("-------------------------")
     break
 
-  print(f"Epoch {epoch+1}, Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}")
+  print(f"Epoch {epoch+1}, Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}, Time; {epoch_mins:.2f} minutes")
   torch.cuda.empty_cache()
 
 import matplotlib.pyplot as plt
@@ -187,7 +193,7 @@ Y_pred = torch.round(pred).detach().cpu().numpy()
 
 from sklearn.metrics import accuracy_score
 acc = accuracy_score(Y_test.reshape(-1,1), Y_pred)
-print(f'Accuracy rating: {acc:.4f}%')
+print(f'Accuracy rating: {100*acc:.4f}%')
 
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
