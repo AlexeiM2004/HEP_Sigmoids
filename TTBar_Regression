@@ -1,0 +1,242 @@
+### ------------------------------ Imports ------------------------------ ###
+
+import uproot # Read in ROOT file format 
+import awkward as ak # Used to perform awkward operations on jagged arrays
+import matplotlib.pyplot as plt # Used to plot graphs 
+import os
+import numpy as np
+import torch
+
+### ------------------------------ Device Usage ------------------------------ ###
+
+print(torch.cuda.is_available())
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using {device} device")
+
+### ------------------------------ File Download ------------------------------ ###
+
+filename = "ttbar_2L_mc20eTest50_240426A_410472_mc20e_fullsim.root"
+
+size = os.path.getsize("ttbar_2L_mc20eTest50_240426A_410472_mc20e_fullsim.root")
+print(f"File size: {size / (1024**3):.2f} GB")
+
+### ------------------------------ Data Preperation ------------------------------ ###
+
+# Open main file
+
+file_ttbar  = uproot.open("ttbar_2L_mc20eTest50_240426A_410472_mc20e_fullsim.root") 
+
+# Access reco branch
+
+tree = file_ttbar["reco"] 
+
+# Access all jet_ , el_, and mu_ columns
+
+jet_cols = [col for col in tree.fields if col.startswith('jet_')]
+# print(f"Number of jet_ columns = {len(jet_cols)}") # 8
+el_cols = [col for col in tree.fields if col.startswith('el_')]
+# print(f"Number of el_ columns = {len(el_cols)}") # 5
+mu_cols = [col for col in tree.fields if col.startswith('mu_')]
+# print(f"Number of mu_ columns = {len(mu_cols)}") # 5
+
+# List concatenate all colums into one input column
+
+input_cols = jet_cols + el_cols + mu_cols 
+
+# Access ttbar_m column
+
+ttbar_mass = tree["parton_ttbar_m"]
+
+# Pad and fill all data to their respective max, using hard coded maxima
+
+jet_cols_padded_filled = []
+
+for i in range(8):
+        padded = ak.pad_none(tree[jet_cols[i]],13,clip=True)
+        filled = ak.fill_none(padded, 0.0)
+        jet_cols_padded_filled.append(filled)
+
+el_cols_padded_filled = []
+mu_cols_padded_filled = []
+
+for i in range(5):
+        padded_el = ak.pad_none(tree[el_cols[i]],2,clip=True)
+        padded_mu = ak.pad_none(tree[mu_cols[i]],2,clip=True)
+        filled_el = ak.fill_none(padded_el, 0.0)
+        filled_mu = ak.fill_none(padded_mu, 0.0)
+        el_cols_padded_filled.append(filled_el)
+        mu_cols_padded_filled.append(filled_mu)
+
+# Stack inpout columns individually from each arrays
+
+X_jets = np.column_stack(jet_cols_padded_filled)
+X_el = np.column_stack(el_cols_padded_filled)
+X_mu = np.column_stack(mu_cols_padded_filled)
+
+# Concatenate X data
+
+X = np.concatenate([X_jets, X_mu, X_el], axis = 1)
+
+target = np.array(ttbar_mass)
+
+### ------------------------------ Split into train/validation/test (80:10:10) ------------------------------ ###
+
+from sklearn.model_selection import train_test_split
+
+# First split: 80% train, 20% temp
+X_train, X_temp, Y_train, Y_temp = train_test_split(X, target, test_size=0.2, random_state=42)
+
+# Second split: 10% validation, 10% test
+X_val, X_test, Y_val, Y_test = train_test_split(X_temp, Y_temp, test_size=0.5, random_state=42)
+
+print(f"Train: {X_train.shape[0]} samples")
+print(f"Validation: {X_val.shape[0]} samples")
+print(f"Test: {X_test.shape[0]} samples")
+
+### ------------------------------ Scale the data ------------------------------ ###
+
+from sklearn.preprocessing import StandardScaler
+
+scaler_X = StandardScaler()
+scaler_X.fit(X_train)
+
+X_train_scaled = scaler_X.transform(X_train)
+X_val_scaled = scaler_X.transform(X_val)
+X_test_scaled = scaler_X.transform(X_test)
+
+scaler_Y = StandardScaler()
+scaler_Y.fit(Y_train)
+Y_train_scaled = scaler_Y.transform(Y_train.reshape(-1, 1)).flatten()
+Y_val_scaled = scaler_Y.transform(Y_val.reshape(-1, 1)).flatten()
+Y_test_scaled = scaler_Y.transform(Y_test.reshape(-1, 1)).flatten()
+
+
+### ------------------------------ Convert Into Tensors ------------------------------ ###
+
+X_train_tensor = torch.tensor(X_train_scaled, dtype=torch.float32, device=device)
+X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32, device=device)
+X_test_tensor = torch.tensor(X_test_scaled, dtype=torch.float32, device=device)
+
+Y_train_tensor = torch.tensor(Y_train_scaled.reshape(-1, 1), dtype=torch.float32, device=device)
+Y_val_tensor = torch.tensor(Y_val_scaled.reshape(-1, 1), dtype=torch.float32, device=device)
+Y_test_tensor = torch.tensor(Y_test_scaled.reshape(-1, 1), dtype=torch.float32, device=device)
+
+print(X_train_tensor.size())
+print(X_val_tensor.size())
+print(X_test_tensor.size())
+
+print(Y_train_tensor.size())
+print(Y_val_tensor.size())
+print(Y_test_tensor.size())
+
+# ------------------------------ DataLoaders ------------------------------ #
+
+from torch.utils.data import TensorDataset, DataLoader
+
+batch_size = 4096
+
+train_dataset = TensorDataset(X_train_tensor, Y_train_tensor)
+val_dataset = TensorDataset(X_val_tensor, Y_val_tensor)
+test_dataset = TensorDataset(X_test_tensor, Y_test_tensor)
+
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+### ------------------------------ Create Model Architecture (MLP for now) ------------------------------ ###
+
+import torch.nn as nn
+
+# Create a DNN ( 2 layers, 32 neurons )
+
+model = nn.Sequential(
+    nn.Linear(124, 32),
+    nn.ReLU(),
+    nn.Linear(32, 16),
+    nn.ReLU(),
+    nn.Linear(16, 1)
+).to(device)
+
+### ------------------------------ Define loss func, optimiser, and scheduler ------------------------------ ###
+
+loss = nn.MSELoss()
+optimiser = torch.optim.Adam(model.parameters(), lr=0.001) # Use the ADAM optimiser
+
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+scheduler = ReduceLROnPlateau(optimiser, mode='min', factor=0.5, patience=5)
+
+### ------------------------------ Run Training Loop ------------------------------ ###
+
+# Run a training loop
+
+import time
+
+losses = [] # Keeps track of loss @ every epoch, this is for visualisation purposes
+val_losses = [] # Keeps track of validation loss @ each epoch
+times = [] # Keep track of times
+
+N_epochs = 50 # Number of epochs we iterate over
+
+for epoch in range(N_epochs):
+
+    start_time = time.time()
+    model.train()
+    epoch_train_loss = 0.0
+
+    for batch_x,batch_y in train_loader:
+        # Perform a forward pass
+        y_pred = model(batch_x)
+        train_loss = loss(y_pred,batch_y)
+        
+        # Perform a backward pass + Optimisation
+
+        optimiser.zero_grad()
+        train_loss.backward()
+        optimiser.step()
+        epoch_train_loss += train_loss.item()
+
+    avg_train_loss = epoch_train_loss / len(train_loader)
+    losses.append(avg_train_loss)
+
+    epoch_time = time.time() - start_time
+    times.append(epoch_time)
+
+    model.eval() # Use this to keep track of the validation loss at each step
+    epoch_val_loss = 0.0
+    with torch.no_grad():
+        for batch_x, batch_y in val_loader:
+            y_pred = model(batch_x)
+            val_loss = loss(y_pred, batch_y)
+            epoch_val_loss += val_loss.item()
+    
+    avg_val_loss = epoch_val_loss / len(val_loader)
+    val_losses.append(avg_val_loss)
+
+    # Call scheduler outside batch loop 
+    scheduler.step(avg_val_loss)
+
+    if (epoch + 1) % 10 == 0: # If epoch number + 1 is divisible by 10, print ... Training
+        print(f"Epoch {epoch+1}/{N_epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Loss Diff : {np.abs(avg_val_loss - avg_train_loss):.4f} | Epoch Time: {epoch_time:.2f}s | Total Time: {np.sum(times):.2f}s")
+
+    torch.cuda.empty_cache()
+
+
+# -------------------------------------------------------------------------------------------------- #
+
+# Display loss curve
+
+def plot_loss_curve(losses,val_losses):
+    plt.plot(losses, label='Training Loss')
+    plt.plot(val_losses, label='Validation loss')
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss") 
+    plt.title("Loss curve")
+    plt.legend()
+    plt.show()
+
+plot_loss_curve(losses,val_losses)
+
+# -------------------------------------------------------------------------------------------------- #
+
