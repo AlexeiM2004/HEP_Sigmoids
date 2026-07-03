@@ -3,7 +3,7 @@
 # Selects device (GPU)
 # Loads prepared and preprocessed data from "ttbar_data_prep_and_preprocess.py"
 # Converts X and target into tensors
-# Employers dataloaders for batching
+# Employs dataloaders for batching
 # Defines model architecture
 # Defines an early stopping mechanism
 # Defines loss function, optimiser and scheduler
