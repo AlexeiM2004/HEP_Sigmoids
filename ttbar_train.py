@@ -223,6 +223,50 @@ RMS_GeV = root_mean_squared_error(Y_test_geV,Y_pred_geV)
 MAE_GeV = mean_absolute_error(Y_test_geV,Y_pred_geV)
 R2_GeV = r2_score(Y_test_geV,Y_pred_geV)
 
+def make_prediction(model, data_loader):
+    model.eval()
+    list_of_predictions = []
+
+    with torch.no_grad():
+        for inputs, _ in data_loader:
+            outputs = model(inputs)
+            list_of_predictions.append(outputs.cpu().numpy())
+    
+    return np.vstack(list_of_predictions)
+
+from sklearn.metrics import accuracy_score
+
+def feature_importances(model, X_tensor, Y_tensor, Y_vals, batch_size):
+    
+    physical_prediction = lambda x: make_prediction(model, x)
+
+    # Make dataloader for baseline
+    baseline_dataset = TensorDataset(X_tensor, Y_tensor)
+    baseline_loader = DataLoader(baseline_dataset, batch_size=batch_size, shuffle=False)
+
+    # Calculate baseline scores
+    baseline_score = r2_score(Y_vals, make_prediction(model, baseline_loader))
+    importances = []
+
+    for feature_idx in range(X_tensor.shape[1]):
+        # Shuffle the values of the current feature
+        X_tensor_shuffled = X_tensor.clone()
+        X_tensor_shuffled[:, feature_idx] = X_tensor_shuffled[:, feature_idx][torch.randperm(X_tensor.shape[0])]
+
+        # Make shuffled dataloader
+        shuffled_dataset = TensorDataset(X_tensor_shuffled, Y_tensor)
+        shuffled_dataloader = DataLoader(shuffled_dataset, batch_size=batch_size, shuffle=False)
+
+        # Calculate Shuffled score
+        shuffled_score = r2_score(Y_vals, make_prediction(model, shuffled_dataloader))
+
+        # Subtract scores for importance
+        importances.append(baseline_score - shuffled_score)
+
+    return np.array(importances)
+
+    importances = feature_importances(model, X_val_tensor, Y_val_tensor, Y_val_scaled, batch_size)
+
 # ------------------------------ Plotting ------------------------------ #
 import matplotlib.pyplot as plt
 
@@ -294,4 +338,12 @@ np.savetxt(
     delimiter="  "
 )
 
+np.savetxt(
+    "/data/ttbar_mass_importances.txt",
+    importances,
+    fmt="%.2f",
+    delimiter="  "
+)
+
 print("Saved predictions to ttbar_mass_predictions.txt")
+
