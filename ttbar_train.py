@@ -21,6 +21,7 @@ import os
 import numpy as np
 import torch
 import h5py
+import pandas as pd
 
 ### ------------------------------ Device Usage ------------------------------ ###
 
@@ -43,6 +44,7 @@ with h5py.File("../data/ttbar_train_val_test.h5", "r") as f:
     Y_test_scaled = f["Y_test"][:]
     scaler_Y_mean = f["scaler_Y_mean"][0]
     scaler_Y_scale = f["scaler_Y_scale"][0]
+    features = f["Feature_labels"][:]
 
 print(f"Train: {X_train_scaled.shape}, Val: {X_val_scaled.shape}, Test: {X_test_scaled.shape}")
 
@@ -236,7 +238,7 @@ def make_prediction(model, data_loader):
 
 from sklearn.metrics import accuracy_score
 
-def feature_importances(model, X_tensor, Y_tensor, Y_vals, batch_size):
+def calc_feature_importances(model, X_tensor, Y_tensor, Y_vals, batch_size):
     
     physical_prediction = lambda x: make_prediction(model, x)
 
@@ -265,8 +267,15 @@ def feature_importances(model, X_tensor, Y_tensor, Y_vals, batch_size):
 
     return np.array(importances)
 
-    importances = feature_importances(model, X_val_tensor, Y_val_tensor, Y_val_scaled, batch_size)
+def rank_features(importances, feature_names):
+    importances = np.asarray(importances, dtype=float)
+    feature_names = np.array([f.decode() if isinstance(f, bytes) else f for f in feature_names])
 
+    idx = np.argsort(importances)[::-1]
+    return feature_names[idx], importances[idx] 
+
+feature_importances = calc_feature_importances(model, X_val_tensor, Y_val_tensor, Y_val_scaled, batch_size)
+sorted_names, sorted_importances = rank_features(feature_importances, features)
 # ------------------------------ Plotting ------------------------------ #
 import matplotlib.pyplot as plt
 
@@ -338,12 +347,11 @@ np.savetxt(
     delimiter="  "
 )
 
-np.savetxt(
-    "/data/ttbar_mass_importances.txt",
-    importances,
-    fmt="%.2f",
-    delimiter="  "
-)
+importance_df = pd.DataFrame({
+    "feature": sorted_names,
+    "importance": sorted_importances
+})
+importance_df.to_csv("../data/ttbar_mass_importances.csv", index=False)
 
 print("Saved predictions to ttbar_mass_predictions.txt")
 

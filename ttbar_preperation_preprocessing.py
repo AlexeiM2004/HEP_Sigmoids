@@ -82,6 +82,15 @@ X_met = np.column_stack([tree['met_met_NOSYS'],tree['met_phi_NOSYS']])
 X = np.concatenate([X_jets, X_mu, X_el, X_met], axis=1)
 target = np.array(ttbar_mass)
 
+# Build the flat, ordered feature-name list to match X's columns exactly
+feature_names = []
+feature_names += [f"{col}_{i}" for col in jet_cols for i in range(8)]
+feature_names += [f"{col}_{i}" for col in el_cols for i in range(5)]
+feature_names += [f"{col}_{i}" for col in mu_cols for i in range(5)]
+feature_names += [f"{col}_{i}" for col in met_cols for i in range(1)]
+
+feature_names = np.array(feature_names)
+
 # Delete large objects to free memory
 del tree, ttbar_mass, jet_cols_padded_filled, el_cols_padded_filled, mu_cols_padded_filled, met_cols
 del X_jets, X_el, X_mu, X_met
@@ -121,6 +130,7 @@ with h5py.File("ttbar_train_val_test.h5", "w") as f:
     f.create_dataset("Y_train", data=Y_train_scaled, compression="gzip")
     f.create_dataset("Y_val", data=Y_val_scaled, compression="gzip")
     f.create_dataset("Y_test", data=Y_test_scaled, compression="gzip")
+    f.create_dataset("Feature_labels", data=feature_names.astype("S"))
     # Save scaler for inverse transform
     f.create_dataset("scaler_Y_mean", data=np.array([scaler_Y.mean_]))
     f.create_dataset("scaler_Y_scale", data=np.array([scaler_Y.scale_]))
