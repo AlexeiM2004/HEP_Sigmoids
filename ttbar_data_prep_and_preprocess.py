@@ -114,15 +114,23 @@ Y_test_scaled = scaler_Y.transform(Y_test.reshape(-1, 1)).flatten()
 
 import h5py
 
-with h5py.File("ttbar_train_val_test.h5", "w") as f:
-    f.create_dataset("X_train", data=X_train_scaled, compression="gzip")
-    f.create_dataset("X_val", data=X_val_scaled, compression="gzip")
-    f.create_dataset("X_test", data=X_test_scaled, compression="gzip")
-    f.create_dataset("Y_train", data=Y_train_scaled, compression="gzip")
-    f.create_dataset("Y_val", data=Y_val_scaled, compression="gzip")
-    f.create_dataset("Y_test", data=Y_test_scaled, compression="gzip")
-    # Save scaler for inverse transform
-    f.create_dataset("scaler_Y_mean", data=np.array([scaler_Y.mean_]))
-    f.create_dataset("scaler_Y_scale", data=np.array([scaler_Y.scale_]))
+with h5py.File("ttbar_train.h5", "w") as f:
+    f.create_dataset("X", data=X_train_scaled)
+    f.create_dataset("Y", data=Y_train_scaled)
 
-print("Saved to ttbar_train_val_test.h5")
+with h5py.File("ttbar_val.h5", "w") as f:
+    f.create_dataset("X", data=X_val_scaled)
+    f.create_dataset("Y", data=Y_val_scaled)
+
+with h5py.File("ttbar_test.h5", "w") as f:
+    f.create_dataset("X", data=X_test_scaled)
+    f.create_dataset("Y", data=Y_test_scaled)
+
+with h5py.File("scaler_info.h5", "w") as f:
+    f.create_dataset("Y_mean", data=scaler_Y.mean_[0])
+    f.create_dataset("Y_scale", data=scaler_Y.scale_[0])
+
+print("Saved to ttbar_train.h5")
+print("Saved to ttbar_val.h5")
+print("Saved to ttbar_test.h5")
+print("Saved scaler info to scaler_info.h5")
