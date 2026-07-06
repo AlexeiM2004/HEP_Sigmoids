@@ -3,7 +3,7 @@
 # Selects device (GPU)
 # Loads prepared and preprocessed data from "ttbar_data_prep_and_preprocess.py"
 # Converts X and target into tensors
-# Employs dataloaders for batching
+# Employers dataloaders for batching
 # Defines model architecture
 # Defines an early stopping mechanism
 # Defines loss function, optimiser and scheduler
@@ -11,6 +11,8 @@
 # Evaluates model
 # Generates plots
 # Saves predicted and true ttbar mass to file
+
+print("Batch Submitted")
 
 ### ------------------------------ Imports ------------------------------ ###
 
@@ -21,6 +23,9 @@ import os
 import numpy as np
 import torch
 import h5py
+import time
+
+total_time = time.time()
 
 ### ------------------------------ Device Usage ------------------------------ ###
 
@@ -32,37 +37,20 @@ print(f"Number of GPUs: {torch.cuda.device_count()}")
 
 ### ------------------------------ Load Preprocessed Data ------------------------------ ###
 
-print("Load data from HDF5", flush=True)
+from torch.utils.data import Dataset
 
-with h5py.File("../data/ttbar_train_val_test.h5", "r") as f:
-    X_train_scaled = f["X_train"][:]
-    X_val_scaled = f["X_val"][:]
-    X_test_scaled = f["X_test"][:]
-    Y_train_scaled = f["Y_train"][:]
-    Y_val_scaled = f["Y_val"][:]
-    Y_test_scaled = f["Y_test"][:]
-    scaler_Y_mean = f["scaler_Y_mean"][0]
-    scaler_Y_scale = f["scaler_Y_scale"][0]
+class CustomDataset(Dataset):
+    def __init__(self, file_path):
+        with h5py.File(file_path, "r") as f:
+            self.X = torch.tensor(f["X"][:], dtype=torch.float32)
+            self.Y = torch.tensor(f["Y"][:], dtype=torch.float32)
 
-print(f"Train: {X_train_scaled.shape}, Val: {X_val_scaled.shape}, Test: {X_test_scaled.shape}")
+    def __len__(self):
+        return len(self.X)
 
-### ------------------------------ Convert Into Tensors ------------------------------ ###
+    def __getitem__(self, idx):
+        return self.X[idx], self.Y[idx]
 
-X_train_tensor = torch.tensor(X_train_scaled, dtype=torch.float32, device=device)
-X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32, device=device)
-X_test_tensor = torch.tensor(X_test_scaled, dtype=torch.float32, device=device)
-
-Y_train_tensor = torch.tensor(Y_train_scaled.reshape(-1, 1), dtype=torch.float32, device=device)
-Y_val_tensor = torch.tensor(Y_val_scaled.reshape(-1, 1), dtype=torch.float32, device=device)
-Y_test_tensor = torch.tensor(Y_test_scaled.reshape(-1, 1), dtype=torch.float32, device=device)
-
-print(X_train_tensor.size())
-print(X_val_tensor.size())
-print(X_test_tensor.size())
-
-print(Y_train_tensor.size())
-print(Y_val_tensor.size())
-print(Y_test_tensor.size())
 
 # ------------------------------ DataLoaders ------------------------------ #
 
@@ -70,13 +58,13 @@ from torch.utils.data import TensorDataset, DataLoader
 
 batch_size = 4096
 
-train_dataset = TensorDataset(X_train_tensor, Y_train_tensor)
-val_dataset = TensorDataset(X_val_tensor, Y_val_tensor)
-test_dataset = TensorDataset(X_test_tensor, Y_test_tensor)
+dataset_train = CustomDataset("ttbar_train.h5")
+dataset_val = CustomDataset("ttbar_val.h5")
+dataset_test = CustomDataset("ttbar_test.h5")
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+train_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(dataset_val, batch_size=batch_size, shuffle=False)
+test_loader = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
 
 ### ------------------------------ Create Model Architecture (MLP for now) ------------------------------ ###
 
@@ -86,23 +74,21 @@ import torch.nn as nn
 
 model = nn.Sequential(
     nn.Linear(86, 128),
-    nn.GELU(),
+    nn.ELU(),
     nn.Dropout(0.2),
     nn.Linear(128, 64),
-    nn.GELU(),
+    nn.ELU(),
     nn.Dropout(0.2),
     nn.Linear(64, 32),
-    nn.GELU(),
+    nn.ELU(),
     nn.Dropout(0.2),
     nn.Linear(32, 1)
 ).to(device)
 
-model = nn.DataParallel(model)
-
 ### ------------------------------ Early stopping mechanism ------------------------------ ###
 
 class EarlyStopping:
-    def __init__(self, patience=40, min_delta=0):
+    def __init__(self, patience=20, min_delta=0):
         self.patience = patience        # How many epochs to wait
         self.min_delta = min_delta      # Minimum improvement to count
         self.counter = 0
@@ -124,7 +110,7 @@ early_stopping = EarlyStopping()
 
 loss = nn.HuberLoss()
 learning_rate = 0.001
-optimiser = torch.optim.Adam(model.parameters(), lr=learning_rate) # Use the ADAM optimiser
+optimiser = torch.optim.AdamW(model.parameters(), lr=learning_rate) # Use the WAdam optimiser
 
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 scheduler = ReduceLROnPlateau(optimiser, mode='min', factor=0.5, patience=10)
@@ -135,22 +121,24 @@ scheduler = ReduceLROnPlateau(optimiser, mode='min', factor=0.5, patience=10)
 
 print("Beginning Training Loop")
 print("="*60)
-import time
 
 losses = [] # Keeps track of loss @ every epoch, this is for visualisation purposes
 val_losses = [] # Keeps track of validation loss @ each epoch
 times = [] # Keep track of times
 
-N_epochs = 100 # Number of epochs we iterate over
+N_epochs = 150 # Number of epochs we iterate over
 
 for epoch in range(N_epochs):
-
+    print(f"\nStarting epoch {epoch+1}...")  # <-- ADD THIS
     start_time = time.time()
     model.train()
     epoch_train_loss = 0.0
 
     for batch_x,batch_y in train_loader:
         # Perform a forward pass
+        batch_x = batch_x.to(device)
+        batch_y = batch_y.to(device).unsqueeze(1) 
+
         y_pred = model(batch_x)
         train_loss = loss(y_pred,batch_y)
         
@@ -171,6 +159,8 @@ for epoch in range(N_epochs):
     epoch_val_loss = 0.0
     with torch.no_grad():
         for batch_x, batch_y in val_loader:
+            batch_x = batch_x.to(device)
+            batch_y = batch_y.to(device).unsqueeze(1) 
             y_pred = model(batch_x)
             val_loss = loss(y_pred, batch_y)
             epoch_val_loss += val_loss.item()
@@ -195,6 +185,15 @@ for epoch in range(N_epochs):
 
 ### ------------------------------ Evaluate Model ------------------------------ ###
 
+# Load scaler info
+with h5py.File("scaler_info.h5", "r") as f:
+    scaler_Y_mean = f["Y_mean"][()]
+    scaler_Y_scale = f["Y_scale"][()]
+
+# Load test targets directly from H5
+with h5py.File("ttbar_test.h5", "r") as f:
+    Y_test_scaled = f["Y"][:]
+
 model.eval()
 list_of_predictions = []
 with torch.no_grad():
@@ -205,7 +204,7 @@ with torch.no_grad():
 
 
 pred = torch.concatenate(list_of_predictions)
-Y_pred = pred.detach().cpu().numpy()
+Y_pred = pred.detach().cpu().numpy().flatten()
 
 from sklearn.metrics import mean_squared_error,root_mean_squared_error,mean_absolute_error,r2_score
 
@@ -240,7 +239,7 @@ axes[0,0].grid(True, alpha=0.3)
 # Text box with metrics
 axes[0,0].text(
     0.98, 0.98,
-    f"Epochs: {N_epochs}\nBatch size: {batch_size}\nLR: {learning_rate}\nMSE in GeV: {MSE_GeV:.4f}\nRMSE in GeV: {RMS_GeV:.4f}\nMAE in GeV: {MAE_GeV:.4f}\nR^2 in GeV: {R2_GeV:.4f}",
+    f"Epochs: {N_epochs}\nTime taken : {total_time}s \nBatch size: {batch_size}\nLR: {learning_rate}\nMSE in GeV: {MSE_GeV:.4f}\nRMSE in GeV: {RMS_GeV:.4f}\nMAE in GeV: {MAE_GeV:.4f}\nR^2 in GeV: {R2_GeV:.4f}",
     fontsize=10,
     bbox=dict(boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8),
     ha="right",
@@ -277,7 +276,7 @@ axes[1,1].legend()
 axes[1,1].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("../plots/TTBar_Mass.png")
+plt.savefig("TTBar_Mass_WAdam_Mish.png")
 plt.show()
 
 # ------------------------------ Save Predictions to File (Use for ORIGIN) ------------------------------ #
@@ -287,7 +286,7 @@ results = np.column_stack([Y_test_geV, Y_pred_geV, Y_pred_geV - Y_test_geV])
 
 # Save to file
 np.savetxt(
-    "../data/ttbar_mass_predictions.txt", 
+    "ttbar_mass_predictions_WAdam_ELU.txt", 
     results,
     header="True_Mass_GeV  Predicted_Mass_GeV  Resolution_GeV",
     fmt="%.2f",
