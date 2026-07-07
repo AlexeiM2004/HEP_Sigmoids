@@ -27,15 +27,12 @@ from datetime import datetime
 
 current_time = datetime.now()
 formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
-print("Batch submitted at :", formatted_time)
+print("Job started at :", formatted_time)
 
 ### ------------------------------ Device Usage ------------------------------ ###
 
-print(torch.cuda.is_available())
-
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using {device} device")
-print(f"Number of GPUs: {torch.cuda.device_count()}")
+print(f"Using {device} device with number of GPUs: {torch.cuda.device_count()}")
 
 ### ------------------------------ Load Preprocessed Data ------------------------------ ###
 
@@ -72,7 +69,7 @@ test_loader = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
 import torch.nn as nn
 import torch.nn.functional as F
 
-dropout_rate = 0.020
+dropout_rate = 0.025
 
 import torch.nn as nn
 
@@ -141,6 +138,8 @@ class GroupedTransformer(nn.Module):
 
 model = GroupedTransformer(d_model=64,nhead=8,num_layers=8,dropout=0.1).to(device)
 
+print(model)
+
 ### ------------------------------ Early stopping mechanism ------------------------------ ###
 
 class EarlyStopping:
@@ -185,21 +184,20 @@ times = [] # Keep track of times
 N_epochs = 200 # Number of epochs we iterate over
 
 for epoch in range(N_epochs):
-    print(f"\nStarting epoch {epoch+1}...")  # <-- ADD THIS
+
     start_time = time.time()
     model.train()
     epoch_train_loss = 0.0
 
     for batch_x,batch_y in train_loader:
-        # Perform a forward pass
+        # Ensure batch is on GPU
         batch_x = batch_x.to(device)
         batch_y = batch_y.to(device).unsqueeze(1) 
-
+        # Perform a forward pass
         y_pred = model(batch_x)
         train_loss = loss(y_pred,batch_y)
         
         # Perform a backward pass + Optimisation
-
         optimiser.zero_grad()
         train_loss.backward()
         optimiser.step()
@@ -215,8 +213,9 @@ for epoch in range(N_epochs):
     epoch_val_loss = 0.0
     with torch.no_grad():
         for batch_x, batch_y in val_loader:
+            # Ensure batch is on GPU
             batch_x = batch_x.to(device)
-            batch_y = batch_y.to(device).unsqueeze(1) 
+            batch_y = batch_y.to(device).unsqueeze(1) # Convert to (batch size, 1)
             y_pred = model(batch_x)
             val_loss = loss(y_pred, batch_y)
             epoch_val_loss += val_loss.item()
@@ -230,7 +229,7 @@ for epoch in range(N_epochs):
     if (epoch + 1) % 10 == 0: # If epoch number + 1 is divisible by 10, print ... Training
         print(f"Epoch {epoch+1}/{N_epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Loss Diff : {np.abs(avg_val_loss - avg_train_loss):.4f} | Epoch Time: {epoch_time:.2f}s | Total Time: {np.sum(times):.2f}s")
 
-    if epoch >= 50:
+    if epoch >= 50: # Starts the early stop loss after the 50th epoch 
         early_stopping(avg_val_loss)
         if early_stopping.early_stop:
             print("Early stopping triggered.")
