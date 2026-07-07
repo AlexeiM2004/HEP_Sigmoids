@@ -59,11 +59,12 @@ from torch.utils.data import TensorDataset, DataLoader
 
 batch_size = 4096
 
-dataset_train = CustomDataset("../data/ttbar_train.h5")
-dataset_val = CustomDataset("../data/ttbar_val.h5")
-dataset_test = CustomDataset("../data/ttbar_test.h5")
+dataset_train = CustomDataset("../train_inputs/ttbar_train.h5")
+dataset_val = CustomDataset("../train_inputs/ttbar_val.h5")
+dataset_test = CustomDataset("../train_inputs/ttbar_test.h5")
 
-feature_names = f["../data/feature_labels.h5"][:]
+with h5py.File("../train_inputs/feature_labels.h5", "r") as f:
+    features = f["Feature_labels"][:]
 
 train_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(dataset_val, batch_size=batch_size, shuffle=False)
@@ -146,7 +147,7 @@ model = GroupedTransformer(d_model=64,nhead=8,num_layers=8,dropout=0.1).to(devic
 ### ------------------------------ Early stopping mechanism ------------------------------ ###
 
 class EarlyStopping:
-    def __init__(self, patience=20, min_delta=0):
+    def __init__(self, patience=40, min_delta=0):
         self.patience = patience        # How many epochs to wait
         self.min_delta = min_delta      # Minimum improvement to count
         self.counter = 0
@@ -244,12 +245,12 @@ for epoch in range(N_epochs):
 ### ------------------------------ Evaluate Model ------------------------------ ###
 
 # Load scaler info
-with h5py.File("scaler_info.h5", "r") as f:
+with h5py.File("../train_inputs/scaler_info.h5", "r") as f:
     scaler_Y_mean = f["Y_mean"][()]
     scaler_Y_scale = f["Y_scale"][()]
 
-# Load test targets directly from H5
-with h5py.File("ttbar_test.h5", "r") as f:
+# Load test targets directly from H5py
+with h5py.File("../train_inputs/ttbar_test.h5", "r") as f:
     Y_test_scaled = f["Y"][:]
 
 model.eval()
@@ -322,7 +323,7 @@ def calc_feature_importances(model, X_tensor, Y_tensor, Y_vals, batch_size):
     return np.array(importances)
 
 # Load validation data for feature importance
-with h5py.File("ttbar_val.h5", "r") as f:
+with h5py.File("../train_inputs/ttbar_val.h5", "r") as f:
     X_val = torch.tensor(f["X"][:], dtype=torch.float32)
     Y_val = torch.tensor(f["Y"][:], dtype=torch.float32)
 
@@ -331,7 +332,7 @@ feature_importances = calc_feature_importances(model, X_val, Y_val, Y_val.numpy(
 
 # Sort features by importance
 sorted_idx = np.argsort(feature_importances)[::-1]
-sorted_names = np.array(feature_names)[sorted_idx]
+sorted_names = np.array(features)[sorted_idx]
 sorted_importances = feature_importances[sorted_idx]
     
 # ------------------------------ Plotting ------------------------------ #
@@ -388,7 +389,7 @@ axes[1,1].legend()
 axes[1,1].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("TTBar_Mass.png")
+plt.savefig("../plots/TTBar_Mass.png")
 plt.show()
 
 # ------------------------------ Save Predictions to File (Use for ORIGIN) ------------------------------ #
@@ -398,7 +399,7 @@ results = np.column_stack([Y_test_geV, Y_pred_geV, Y_pred_geV - Y_test_geV])
 
 # Save to file
 np.savetxt(
-    "ttbar_mass_predictions.txt", 
+    "../train_outputs/ttbar_mass_predictions.txt", 
     results,
     header="True_Mass_GeV  Predicted_Mass_GeV  Resolution_GeV",
     fmt="%.2f",
@@ -411,7 +412,7 @@ importance_df = pd.DataFrame({
     "feature": sorted_names,
     "importance": sorted_importances
 })
-importance_df.to_csv("ttbar_mass_importances.csv", index=False)
+importance_df.to_csv("../train_outputs/ttbar_mass_importances.csv", index=False)
 
-print("Saved predictions to ../data/ttbar_mass_predictions.txt")
-print("Saved feature importances to ../data/ttbar_mass_importances.csv")
+print("Saved predictions to ttbar_mass_predictions.txt")
+print("Saved feature importances to ttbar_mass_importances.csv")
