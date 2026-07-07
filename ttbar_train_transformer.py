@@ -60,7 +60,8 @@ dataset_train = CustomDataset("../data/ttbar_train.h5")
 dataset_val = CustomDataset("../data/ttbar_val.h5")
 dataset_test = CustomDataset("../data/ttbar_test.h5")
 
-feature_names = f["../data/feature_labels.h5"][:]
+with h5py.File("../data/feature_labels.h5", "r") as f:
+    feature_names = f["feature_names"][:].astype(str)
 
 train_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(dataset_val, batch_size=batch_size, shuffle=False)

@@ -1,0 +1,13 @@
+Job started at : 2026-07-07 14:28:29
+Using cuda device with number of GPUs: 1
+Traceback (most recent call last):
+  File "/net/scratch/m64196am/ttbar_train_transformer.py", line 63, in <module>
+    with h5py.File("feature_labels.h5", "r") as f:
+  File "/mnt/iusers01/fse-ugpgt01/phy01/m64196am/.venv/lib64/python3.9/site-packages/h5py/_hl/files.py", line 564, in __init__
+    fid = make_fid(name, mode, userblock_size, fapl, fcpl, swmr=swmr)
+  File "/mnt/iusers01/fse-ugpgt01/phy01/m64196am/.venv/lib64/python3.9/site-packages/h5py/_hl/files.py", line 238, in make_fid
+    fid = h5f.open(name, flags, fapl=fapl)
+  File "h5py/_objects.pyx", line 56, in h5py._objects.with_phil.wrapper
+  File "h5py/_objects.pyx", line 57, in h5py._objects.with_phil.wrapper
+  File "h5py/h5f.pyx", line 102, in h5py.h5f.open
+FileNotFoundError: [Errno 2] Unable to synchronously open file (unable to open file: name = 'feature_labels.h5', errno = 2, error message = 'No such file or directory', flags = 0, o_flags = 0)
