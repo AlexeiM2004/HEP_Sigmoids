@@ -60,6 +60,8 @@ dataset_train = CustomDataset("../data/ttbar_train.h5")
 dataset_val = CustomDataset("../data/ttbar_val.h5")
 dataset_test = CustomDataset("../data/ttbar_test.h5")
 
+feature_names = f["../data/feature_labels.h5"][:]
+
 train_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(dataset_val, batch_size=batch_size, shuffle=False)
 test_loader = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
@@ -322,9 +324,6 @@ def calc_feature_importances(model, X_tensor, Y_tensor, Y_vals, batch_size):
 with h5py.File("../data/ttbar_val.h5", "r") as f:
     X_val = torch.tensor(f["X"][:], dtype=torch.float32)
     Y_val = torch.tensor(f["Y"][:], dtype=torch.float32)
-
-# Load feature names from preprocessing (you need to save these or define them)
-feature_names = [f"jet_{i}" for i in range(64)] + [f"muon_{i}" for i in range(10)] + [f"electron_{i}" for i in range(10)] + ["met_met", "met_phi"]
 
 # Calculate feature importances
 feature_importances = calc_feature_importances(model, X_val, Y_val, Y_val.numpy(), batch_size)
