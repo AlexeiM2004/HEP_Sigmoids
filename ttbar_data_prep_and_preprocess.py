@@ -82,6 +82,15 @@ X_met = np.column_stack([tree['met_met_NOSYS'],tree['met_phi_NOSYS']])
 X = np.concatenate([X_jets, X_mu, X_el, X_met], axis=1)
 target = np.array(ttbar_mass)
 
+# Build the flat, ordered feature-name list to match X's columns exactly
+feature_names = []
+feature_names += [f"{col}_{i}" for col in jet_cols for i in range(8)]
+feature_names += [f"{col}_{i}" for col in el_cols for i in range(5)]
+feature_names += [f"{col}_{i}" for col in mu_cols for i in range(5)]
+feature_names += [f"{col}_{i}" for col in met_cols for i in range(1)]
+
+feature_names = np.array(feature_names)
+
 # Delete large objects to free memory
 del tree, ttbar_mass, jet_cols_padded_filled, el_cols_padded_filled, mu_cols_padded_filled, met_cols
 del X_jets, X_el, X_mu, X_met
@@ -130,7 +139,11 @@ with h5py.File("scaler_info.h5", "w") as f:
     f.create_dataset("Y_mean", data=scaler_Y.mean_[0])
     f.create_dataset("Y_scale", data=scaler_Y.scale_[0])
 
+with h5py.File("feature_labels.h5","w") as f:
+    f.create_dataset("Feature_labels", data=feature_names.astype("S"))
+
 print("Saved to ttbar_train.h5")
 print("Saved to ttbar_val.h5")
 print("Saved to ttbar_test.h5")
 print("Saved scaler info to scaler_info.h5")
+print("Saved features tofeature_labels.h5")
