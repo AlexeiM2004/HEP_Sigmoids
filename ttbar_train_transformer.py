@@ -242,12 +242,12 @@ for epoch in range(N_epochs):
 ### ------------------------------ Evaluate Model ------------------------------ ###
 
 # Load scaler info
-with h5py.File("scaler_info.h5", "r") as f:
+with h5py.File("../data/scaler_info.h5", "r") as f:
     scaler_Y_mean = f["Y_mean"][()]
     scaler_Y_scale = f["Y_scale"][()]
 
 # Load test targets directly from H5
-with h5py.File("ttbar_test.h5", "r") as f:
+with h5py.File("../data/ttbar_test.h5", "r") as f:
     Y_test_scaled = f["Y"][:]
 
 model.eval()
@@ -320,7 +320,7 @@ def calc_feature_importances(model, X_tensor, Y_tensor, Y_vals, batch_size):
     return np.array(importances)
 
 # Load validation data for feature importance
-with h5py.File("ttbar_val.h5", "r") as f:
+with h5py.File("../data/ttbar_val.h5", "r") as f:
     X_val = torch.tensor(f["X"][:], dtype=torch.float32)
     Y_val = torch.tensor(f["Y"][:], dtype=torch.float32)
 
