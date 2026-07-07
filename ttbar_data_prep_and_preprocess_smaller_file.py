@@ -58,7 +58,7 @@ ttbar_mass = tree["parton_ttbar_m"]
 # Pad and fill all data to their respective max
 jet_cols_padded_filled = []
 for i in range(8):
-    padded_jet = ak.pad_none(tree[jet_cols[i]], 8, clip=True)
+    padded_jet = ak.pad_none(tree[jet_cols[i]], 13, clip=True)
     filled_jet = ak.fill_none(padded_jet, 0.0)
     jet_cols_padded_filled.append(filled_jet)
 
@@ -84,10 +84,12 @@ target = np.array(ttbar_mass)
 
 # Build the flat, ordered feature-name list to match X's columns exactly
 feature_names = []
-feature_names += [f"{col}_{i}" for col in jet_cols for i in range(8)]
-feature_names += [f"{col}_{i}" for col in el_cols for i in range(5)]
-feature_names += [f"{col}_{i}" for col in mu_cols for i in range(5)]
-feature_names += [f"{col}_{i}" for col in met_cols for i in range(1)]
+feature_names += [f"{col}_{i}" for col in jet_cols for i in range(13)]
+feature_names += [f"{col}_{i}" for col in el_cols for i in range(2)]
+feature_names += [f"{col}_{i}" for col in mu_cols for i in range(2)]
+
+for col in met_cols:
+    feature_names.append(col)  # 2 entries
 
 feature_names = np.array(feature_names)
 

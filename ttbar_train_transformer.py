@@ -56,32 +56,32 @@ from torch.utils.data import TensorDataset, DataLoader
 
 batch_size = 4096
 
-dataset_train = CustomDataset("../data/ttbar_train.h5")
-dataset_val = CustomDataset("../data/ttbar_val.h5")
-dataset_test = CustomDataset("../data/ttbar_test.h5")
+dataset_train = CustomDataset("../data/smaller_ttbar_train.h5")
+dataset_val = CustomDataset("../data/smaller_ttbar_val.h5")
+dataset_test = CustomDataset("../data/smaller_ttbar_test.h5")
 
 with h5py.File("../data/feature_labels.h5", "r") as f:
-    feature_names = f["feature_names"][:].astype(str)
+    feature_names = f["Feature_labels"][:].astype(str)
 
 train_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(dataset_val, batch_size=batch_size, shuffle=False)
 test_loader = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
 
-### ------------------------------ Create Model Architecture (MLP for now) ------------------------------ ###
+### ------------------------------ Create Model Architecture ------------------------------ ###
 
 import torch.nn as nn
 import torch.nn.functional as F
 
-dropout_rate = 0.025
+dropout_rate = 0.02
 
 import torch.nn as nn
 
 class GroupedTransformer(nn.Module):
-    def __init__(self, d_model=64, nhead=4, num_layers=3, dropout=0.1):
+    def __init__(self, d_model=64, nhead=4, num_layers=4, dropout=0.1):
         super().__init__()
         
         # Project each group to d_model
-        self.jet_proj = nn.Linear(64, d_model)
+        self.jet_proj = nn.Linear(104, d_model)
         self.muon_proj = nn.Linear(10, d_model)
         self.electron_proj = nn.Linear(10, d_model)
         self.met_proj = nn.Linear(2, d_model)
@@ -117,11 +117,11 @@ class GroupedTransformer(nn.Module):
         return x.mean(dim=1)
         
     def forward(self, x):
-        # Split 86 features into groups
-        jet_features = x[:, :64]
-        muon_features = x[:, 64:74]
-        electron_features = x[:, 74:84]
-        met_features = x[:, 84:86]
+        # Split 126 features into groups
+        jet_features = x[:, :104]
+        muon_features = x[:, 104:114]
+        electron_features = x[:, 114:124]
+        met_features = x[:, 124:126]
         
         # Project each group to token and concatenate
         jet_token = self.jet_proj(jet_features).unsqueeze(1)
@@ -139,7 +139,7 @@ class GroupedTransformer(nn.Module):
         
         return self.classifier(pooled)
 
-model = GroupedTransformer(d_model=64,nhead=8,num_layers=8,dropout=0.1).to(device)
+model = GroupedTransformer(d_model=64,nhead=4,num_layers=4,dropout=0.1).to(device)
 
 print(model)
 
@@ -184,7 +184,7 @@ losses = [] # Keeps track of loss @ every epoch, this is for visualisation purpo
 val_losses = [] # Keeps track of validation loss @ each epoch
 times = [] # Keep track of times
 
-N_epochs = 200 # Number of epochs we iterate over
+N_epochs = 20 # Number of epochs we iterate over
 
 for epoch in range(N_epochs):
 
@@ -244,12 +244,12 @@ for epoch in range(N_epochs):
 ### ------------------------------ Evaluate Model ------------------------------ ###
 
 # Load scaler info
-with h5py.File("../data/scaler_info.h5", "r") as f:
+with h5py.File("../data/smaller_scaler_info.h5", "r") as f:
     scaler_Y_mean = f["Y_mean"][()]
     scaler_Y_scale = f["Y_scale"][()]
 
 # Load test targets directly from H5
-with h5py.File("../data/ttbar_test.h5", "r") as f:
+with h5py.File("../data/smaller_ttbar_test.h5", "r") as f:
     Y_test_scaled = f["Y"][:]
 
 model.eval()
@@ -322,7 +322,7 @@ def calc_feature_importances(model, X_tensor, Y_tensor, Y_vals, batch_size):
     return np.array(importances)
 
 # Load validation data for feature importance
-with h5py.File("../data/ttbar_val.h5", "r") as f:
+with h5py.File("../data/smaller_ttbar_val.h5", "r") as f:
     X_val = torch.tensor(f["X"][:], dtype=torch.float32)
     Y_val = torch.tensor(f["Y"][:], dtype=torch.float32)
 
@@ -388,7 +388,7 @@ axes[1,1].legend()
 axes[1,1].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("TTBar_Mass.png")
+plt.savefig("ttbar_Mass.png")
 plt.show()
 
 # ------------------------------ Save Predictions to File (Use for ORIGIN) ------------------------------ #
