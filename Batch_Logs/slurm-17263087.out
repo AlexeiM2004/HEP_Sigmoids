@@ -1,0 +1,78 @@
+# ---------- BATCH RECIEPT ---------- #
+Job ID: 17263087
+Job Name: ttbar_submit_embed.sh
+Submit Time: Wed  8 Jul 12:09:12 BST 2026
+Node: node880.csf3.man.alces.network
+User: q44882cb
+Partition: gpuL
+GPUs: 2
+Working Directory: /mnt/iusers01/fse-ugpgt01/phy01/q44882cb/HEP_Sigmoids
+# ----------------------------------- #
+
+Job started at : 2026-07-08 12:09:16
+Using cuda device with number of GPUs: 2
+GroupedTransformer(
+  (jet_proj): Linear(in_features=13, out_features=64, bias=True)
+  (muon_proj): Linear(in_features=5, out_features=64, bias=True)
+  (electron_proj): Linear(in_features=5, out_features=64, bias=True)
+  (met_proj): Linear(in_features=2, out_features=64, bias=True)
+  (transformer): TransformerEncoder(
+    (layers): ModuleList(
+      (0-3): 4 x TransformerEncoderLayer(
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=True)
+        )
+        (linear1): Linear(in_features=64, out_features=256, bias=True)
+        (dropout): Dropout(p=0.1, inplace=False)
+        (linear2): Linear(in_features=256, out_features=64, bias=True)
+        (norm1): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+        (norm2): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+        (dropout1): Dropout(p=0.1, inplace=False)
+        (dropout2): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (classifier): Sequential(
+    (0): Linear(in_features=64, out_features=128, bias=True)
+    (1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+    (2): GELU(approximate='none')
+    (3): Dropout(p=0.1, inplace=False)
+    (4): Linear(in_features=128, out_features=1, bias=True)
+  )
+  (norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+  (type_emb): Embedding(4, 64)
+  (dropout): Dropout(p=0.1, inplace=False)
+)
+Beginning Training Loop
+============================================================
+Epoch 10/200 | Train Loss: 0.1556 | Val Loss: 0.1482 | Loss Diff : 0.0074 | Epoch Time: 4.13s | Total Time: 41.85s
+Epoch 20/200 | Train Loss: 0.1428 | Val Loss: 0.1313 | Loss Diff : 0.0115 | Epoch Time: 4.10s | Total Time: 83.00s
+Epoch 30/200 | Train Loss: 0.1356 | Val Loss: 0.1281 | Loss Diff : 0.0075 | Epoch Time: 4.09s | Total Time: 124.11s
+Epoch 40/200 | Train Loss: 0.1305 | Val Loss: 0.1259 | Loss Diff : 0.0046 | Epoch Time: 4.14s | Total Time: 165.24s
+Epoch 50/200 | Train Loss: 0.1281 | Val Loss: 0.1213 | Loss Diff : 0.0068 | Epoch Time: 4.10s | Total Time: 206.31s
+Epoch 60/200 | Train Loss: 0.1245 | Val Loss: 0.1202 | Loss Diff : 0.0042 | Epoch Time: 4.09s | Total Time: 247.33s
+Epoch 70/200 | Train Loss: 0.1209 | Val Loss: 0.1126 | Loss Diff : 0.0084 | Epoch Time: 4.10s | Total Time: 288.36s
+Epoch 80/200 | Train Loss: 0.1173 | Val Loss: 0.1118 | Loss Diff : 0.0055 | Epoch Time: 4.15s | Total Time: 329.51s
+Epoch 90/200 | Train Loss: 0.1146 | Val Loss: 0.1112 | Loss Diff : 0.0034 | Epoch Time: 4.10s | Total Time: 370.55s
+Epoch 100/200 | Train Loss: 0.1137 | Val Loss: 0.1101 | Loss Diff : 0.0036 | Epoch Time: 4.10s | Total Time: 411.58s
+Epoch 110/200 | Train Loss: 0.1124 | Val Loss: 0.1108 | Loss Diff : 0.0016 | Epoch Time: 4.08s | Total Time: 452.64s
+Epoch 120/200 | Train Loss: 0.1108 | Val Loss: 0.1104 | Loss Diff : 0.0004 | Epoch Time: 4.13s | Total Time: 493.68s
+Epoch 130/200 | Train Loss: 0.1101 | Val Loss: 0.1080 | Loss Diff : 0.0021 | Epoch Time: 4.07s | Total Time: 534.51s
+Epoch 140/200 | Train Loss: 0.1095 | Val Loss: 0.1070 | Loss Diff : 0.0026 | Epoch Time: 4.07s | Total Time: 575.29s
+Epoch 150/200 | Train Loss: 0.1084 | Val Loss: 0.1072 | Loss Diff : 0.0012 | Epoch Time: 4.07s | Total Time: 616.05s
+Epoch 160/200 | Train Loss: 0.1058 | Val Loss: 0.1071 | Loss Diff : 0.0013 | Epoch Time: 4.11s | Total Time: 656.86s
+Epoch 170/200 | Train Loss: 0.1054 | Val Loss: 0.1077 | Loss Diff : 0.0024 | Epoch Time: 4.06s | Total Time: 697.57s
+Epoch 180/200 | Train Loss: 0.1041 | Val Loss: 0.1071 | Loss Diff : 0.0030 | Epoch Time: 4.09s | Total Time: 738.93s
+Epoch 190/200 | Train Loss: 0.1035 | Val Loss: 0.1062 | Loss Diff : 0.0027 | Epoch Time: 4.10s | Total Time: 779.98s
+Early stopping triggered.
+Final Epoch before early stop [193/200], Training Loss: 0.1032, Validation Loss: 0.1062
+Saved predictions to ../data/ttbar_mass_predictions_embed.txt
+Saved feature importances to ../data/ttbar_mass_importances_embed.csv
+---------------Metrics---------------
+Epochs: 200
+Batch size: 4096
+LR: 0.001
+MSE in GeV: 7781.3260
+RMSE in GeV: 88.2118
+MAE in GeV: 59.5685
+R^2 in GeV: 0.7642

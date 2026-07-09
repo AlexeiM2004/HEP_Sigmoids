@@ -1,0 +1,86 @@
+# ---------- BATCH RECIEPT ---------- #
+Job ID: 17400253
+Job Name: ttbar_mha.sh
+Submit Time: Thu  9 Jul 16:10:22 BST 2026
+Node: node872.csf3.man.alces.network
+User: q44882cb
+Partition: gpuL
+GPUs: 1
+Working Directory: /mnt/iusers01/fse-ugpgt01/phy01/q44882cb/HEP_Sigmoids
+# ----------------------------------- #
+
+Job started at : 2026-07-09 16:11:27
+Using cuda device with number of GPUs: 1
+GroupedTransformer(
+  (jet_proj): Linear(in_features=104, out_features=64, bias=True)
+  (muon_proj): Linear(in_features=10, out_features=64, bias=True)
+  (electron_proj): Linear(in_features=10, out_features=64, bias=True)
+  (met_proj): Linear(in_features=2, out_features=64, bias=True)
+  (transformer): TransformerEncoder(
+    (layers): ModuleList(
+      (0-3): 4 x TransformerEncoderLayer(
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=True)
+        )
+        (linear1): Linear(in_features=64, out_features=256, bias=True)
+        (dropout): Dropout(p=0.1, inplace=False)
+        (linear2): Linear(in_features=256, out_features=64, bias=True)
+        (norm1): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+        (norm2): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+        (dropout1): Dropout(p=0.1, inplace=False)
+        (dropout2): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (classifier): Sequential(
+    (0): Linear(in_features=64, out_features=128, bias=True)
+    (1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+    (2): GELU(approximate='none')
+    (3): Dropout(p=0.1, inplace=False)
+    (4): Linear(in_features=128, out_features=64, bias=True)
+    (5): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (6): GELU(approximate='none')
+    (7): Dropout(p=0.1, inplace=False)
+    (8): Linear(in_features=64, out_features=32, bias=True)
+    (9): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+    (10): GELU(approximate='none')
+    (11): Dropout(p=0.1, inplace=False)
+    (12): Linear(in_features=32, out_features=1, bias=True)
+  )
+  (pooler): MultiheadAttention(
+    (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=True)
+  )
+)
+Beginning Training Loop
+============================================================
+Epoch 10/800 | Train Loss: 0.1057 | Val Loss: 0.1001 | Loss Diff : 0.0055 | Epoch Time: 19.86s | Total Time: 205.02s
+Epoch 20/800 | Train Loss: 0.0993 | Val Loss: 0.0952 | Loss Diff : 0.0041 | Epoch Time: 21.18s | Total Time: 412.61s
+Epoch 30/800 | Train Loss: 0.0967 | Val Loss: 0.0943 | Loss Diff : 0.0024 | Epoch Time: 21.20s | Total Time: 624.49s
+Epoch 40/800 | Train Loss: 0.0951 | Val Loss: 0.0912 | Loss Diff : 0.0038 | Epoch Time: 21.24s | Total Time: 836.60s
+Epoch 50/800 | Train Loss: 0.0937 | Val Loss: 0.0905 | Loss Diff : 0.0032 | Epoch Time: 21.24s | Total Time: 1048.91s
+Epoch 60/800 | Train Loss: 0.0927 | Val Loss: 0.0899 | Loss Diff : 0.0028 | Epoch Time: 21.22s | Total Time: 1261.19s
+Epoch 70/800 | Train Loss: 0.0918 | Val Loss: 0.0891 | Loss Diff : 0.0027 | Epoch Time: 21.20s | Total Time: 1473.36s
+Epoch 80/800 | Train Loss: 0.0913 | Val Loss: 0.0895 | Loss Diff : 0.0018 | Epoch Time: 21.21s | Total Time: 1685.37s
+Epoch 90/800 | Train Loss: 0.0907 | Val Loss: 0.0891 | Loss Diff : 0.0016 | Epoch Time: 21.21s | Total Time: 1897.41s
+Epoch 100/800 | Train Loss: 0.0904 | Val Loss: 0.0899 | Loss Diff : 0.0005 | Epoch Time: 21.19s | Total Time: 2109.31s
+Epoch 110/800 | Train Loss: 0.0900 | Val Loss: 0.0886 | Loss Diff : 0.0014 | Epoch Time: 21.17s | Total Time: 2321.34s
+Epoch 120/800 | Train Loss: 0.0898 | Val Loss: 0.0894 | Loss Diff : 0.0003 | Epoch Time: 21.16s | Total Time: 2533.30s
+Epoch 130/800 | Train Loss: 0.0876 | Val Loss: 0.0869 | Loss Diff : 0.0007 | Epoch Time: 21.20s | Total Time: 2745.45s
+Epoch 140/800 | Train Loss: 0.0866 | Val Loss: 0.0871 | Loss Diff : 0.0005 | Epoch Time: 21.19s | Total Time: 2957.45s
+Epoch 150/800 | Train Loss: 0.0862 | Val Loss: 0.0873 | Loss Diff : 0.0011 | Epoch Time: 21.11s | Total Time: 3168.39s
+Epoch 160/800 | Train Loss: 0.0848 | Val Loss: 0.0872 | Loss Diff : 0.0023 | Epoch Time: 21.11s | Total Time: 3379.42s
+Epoch 170/800 | Train Loss: 0.0840 | Val Loss: 0.0861 | Loss Diff : 0.0021 | Epoch Time: 21.10s | Total Time: 3590.59s
+Epoch 180/800 | Train Loss: 0.0835 | Val Loss: 0.0861 | Loss Diff : 0.0026 | Epoch Time: 21.13s | Total Time: 3801.63s
+Epoch 190/800 | Train Loss: 0.0833 | Val Loss: 0.0862 | Loss Diff : 0.0028 | Epoch Time: 21.12s | Total Time: 4012.77s
+Epoch 200/800 | Train Loss: 0.0832 | Val Loss: 0.0862 | Loss Diff : 0.0030 | Epoch Time: 21.10s | Total Time: 4223.92s
+Early stopping triggered.
+Final Epoch before early stop [204/800], Training Loss: 0.0832, Validation Loss: 0.0862
+Saved predictions to ../data/ttbar_mass_predictions_mha.txt
+---------------Metrics---------------
+Epochs: 800
+Batch size: 4096
+LR: 0.001
+MSE in GeV: 6459.2712
+RMSE in GeV: 80.3696
+MAE in GeV: 54.1958
+R^2 in GeV: 0.8060

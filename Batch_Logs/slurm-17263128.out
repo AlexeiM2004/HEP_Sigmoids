@@ -1,0 +1,73 @@
+# ---------- BATCH RECIEPT ---------- #
+Job ID: 17263128
+Job Name: ttbar_submit.sh
+Submit Time: Wed  8 Jul 12:09:38 BST 2026
+Node: node868.csf3.man.alces.network
+User: q44882cb
+Partition: gpuL
+GPUs: 2
+Working Directory: /mnt/iusers01/fse-ugpgt01/phy01/q44882cb/HEP_Sigmoids
+# ----------------------------------- #
+
+Job started at : 2026-07-08 12:09:43
+Using cuda device with number of GPUs: 2
+GroupedTransformer(
+  (jet_proj): Linear(in_features=104, out_features=64, bias=True)
+  (muon_proj): Linear(in_features=10, out_features=64, bias=True)
+  (electron_proj): Linear(in_features=10, out_features=64, bias=True)
+  (met_proj): Linear(in_features=2, out_features=64, bias=True)
+  (transformer): TransformerEncoder(
+    (layers): ModuleList(
+      (0-3): 4 x TransformerEncoderLayer(
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=True)
+        )
+        (linear1): Linear(in_features=64, out_features=256, bias=True)
+        (dropout): Dropout(p=0.1, inplace=False)
+        (linear2): Linear(in_features=256, out_features=64, bias=True)
+        (norm1): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+        (norm2): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+        (dropout1): Dropout(p=0.1, inplace=False)
+        (dropout2): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (classifier): Sequential(
+    (0): Linear(in_features=64, out_features=128, bias=True)
+    (1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+    (2): GELU(approximate='none')
+    (3): Dropout(p=0.1, inplace=False)
+    (4): Linear(in_features=128, out_features=64, bias=True)
+    (5): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (6): GELU(approximate='none')
+    (7): Dropout(p=0.1, inplace=False)
+    (8): Linear(in_features=64, out_features=32, bias=True)
+    (9): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+    (10): GELU(approximate='none')
+    (11): Dropout(p=0.1, inplace=False)
+    (12): Linear(in_features=32, out_features=1, bias=True)
+  )
+)
+Beginning Training Loop
+============================================================
+Epoch 10/200 | Train Loss: 0.1199 | Val Loss: 0.1151 | Loss Diff : 0.0048 | Epoch Time: 3.08s | Total Time: 31.19s
+Epoch 20/200 | Train Loss: 0.1119 | Val Loss: 0.1122 | Loss Diff : 0.0002 | Epoch Time: 3.07s | Total Time: 62.08s
+Epoch 30/200 | Train Loss: 0.1065 | Val Loss: 0.1092 | Loss Diff : 0.0027 | Epoch Time: 3.09s | Total Time: 92.94s
+Epoch 40/200 | Train Loss: 0.1025 | Val Loss: 0.1078 | Loss Diff : 0.0053 | Epoch Time: 3.11s | Total Time: 123.86s
+Epoch 50/200 | Train Loss: 0.0997 | Val Loss: 0.1064 | Loss Diff : 0.0067 | Epoch Time: 3.08s | Total Time: 154.67s
+Epoch 60/200 | Train Loss: 0.0971 | Val Loss: 0.1078 | Loss Diff : 0.0107 | Epoch Time: 3.07s | Total Time: 185.49s
+Epoch 70/200 | Train Loss: 0.0929 | Val Loss: 0.1060 | Loss Diff : 0.0131 | Epoch Time: 3.08s | Total Time: 216.33s
+Epoch 80/200 | Train Loss: 0.0904 | Val Loss: 0.1063 | Loss Diff : 0.0159 | Epoch Time: 3.13s | Total Time: 247.27s
+Epoch 90/200 | Train Loss: 0.0891 | Val Loss: 0.1062 | Loss Diff : 0.0171 | Epoch Time: 3.10s | Total Time: 278.10s
+Early stopping triggered.
+Final Epoch before early stop [93/200], Training Loss: 0.0890, Validation Loss: 0.1060
+Saved predictions to ../data/ttbar_mass_predictions.txt
+Saved feature importances to ../data/ttbar_mass_importances.csv
+---------------Metrics---------------
+Epochs: 200
+Batch size: 4096
+LR: 0.001
+MSE in GeV: 7936.6745
+RMSE in GeV: 89.0880
+MAE in GeV: 60.4519
+R^2 in GeV: 0.7595
