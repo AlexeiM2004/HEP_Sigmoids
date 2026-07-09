@@ -20,7 +20,7 @@ import numpy as np
 
 ### ------------------------------ File Download ------------------------------ ###
 
-filename = "../data/ttbar_2L_mc20eTrain300_240426C_410472_mc20e_fullsim.root"
+filename = "ttbar_2L_mc20eTrain300_240426C_410472_mc20e_fullsim.root"
 
 size = os.path.getsize(filename)
 print(f"File size: {size / (1024**3):.2f} GB")
@@ -58,7 +58,7 @@ ttbar_mass = tree["parton_ttbar_m"]
 # Pad and fill all data to their respective max
 jet_cols_padded_filled = []
 for i in range(8):
-    padded_jet = ak.pad_none(tree[jet_cols[i]], 8, clip=True)
+    padded_jet = ak.pad_none(tree[jet_cols[i]], 13, clip=True)
     filled_jet = ak.fill_none(padded_jet, 0.0)
     jet_cols_padded_filled.append(filled_jet)
 
@@ -123,23 +123,23 @@ Y_test_scaled = scaler_Y.transform(Y_test.reshape(-1, 1)).flatten()
 
 import h5py
 
-with h5py.File("../data/larger_ttbar_train.h5", "w") as f:
+with h5py.File("train_inputs/larger_ttbar_train.h5", "w") as f:
     f.create_dataset("X", data=X_train_scaled)
     f.create_dataset("Y", data=Y_train_scaled)
 
-with h5py.File("../data/larger_ttbar_val.h5", "w") as f:
+with h5py.File("train_inputs/larger_ttbar_val.h5", "w") as f:
     f.create_dataset("X", data=X_val_scaled)
     f.create_dataset("Y", data=Y_val_scaled)
 
-with h5py.File("../data/larger_ttbar_test.h5", "w") as f:
+with h5py.File("train_inputs/larger_ttbar_test.h5", "w") as f:
     f.create_dataset("X", data=X_test_scaled)
     f.create_dataset("Y", data=Y_test_scaled)
 
-with h5py.File("../data/larger_scaler_info.h5", "w") as f:
+with h5py.File("train_inputs/larger_scaler_info.h5", "w") as f:
     f.create_dataset("Y_mean", data=scaler_Y.mean_[0])
     f.create_dataset("Y_scale", data=scaler_Y.scale_[0])
 
-with h5py.File("../data/feature_labels.h5","w") as f:
+with h5py.File("train_inputs/feature_labels.h5","w") as f:
     f.create_dataset("Feature_labels", data=feature_names.astype("S"))
 
 print("Saved to larger_ttbar_train.h5")
