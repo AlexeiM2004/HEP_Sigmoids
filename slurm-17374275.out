@@ -1,0 +1,11 @@
+# ---------- BATCH RECIEPT ---------- #
+Job ID: 17374275
+Job Name: ttbar_submit_lite_embed.sh
+Submit Time: Thu  9 Jul 09:56:40 BST 2026
+Node: node881.csf3.man.alces.network
+User: q44882cb
+Partition: gpuL
+GPUs: 2
+Working Directory: /mnt/iusers01/fse-ugpgt01/phy01/q44882cb/HEP_Sigmoids
+# ----------------------------------- #
+

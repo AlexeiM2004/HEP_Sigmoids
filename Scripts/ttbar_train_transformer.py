@@ -56,11 +56,11 @@ from torch.utils.data import TensorDataset, DataLoader
 
 batch_size = 4096
 
-dataset_train = CustomDataset("../data/smaller_ttbar_train.h5")
-dataset_val = CustomDataset("../data/smaller_ttbar_val.h5")
-dataset_test = CustomDataset("../data/smaller_ttbar_test.h5")
+dataset_train = CustomDataset("../train_inputs/larger_ttbar_train.h5")
+dataset_val = CustomDataset("../train_inputs/larger_ttbar_val.h5")
+dataset_test = CustomDataset("../train_inputs/larger_ttbar_test.h5")
 
-with h5py.File("../data/feature_labels.h5", "r") as f:
+with h5py.File("../train_inputs/feature_labels.h5", "r") as f:
     feature_names = f["Feature_labels"][:].astype(str)
 
 train_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
@@ -184,7 +184,7 @@ losses = [] # Keeps track of loss @ every epoch, this is for visualisation purpo
 val_losses = [] # Keeps track of validation loss @ each epoch
 times = [] # Keep track of times
 
-N_epochs = 20 # Number of epochs we iterate over
+N_epochs = 200 # Number of epochs we iterate over
 
 for epoch in range(N_epochs):
 
@@ -244,12 +244,12 @@ for epoch in range(N_epochs):
 ### ------------------------------ Evaluate Model ------------------------------ ###
 
 # Load scaler info
-with h5py.File("../data/smaller_scaler_info.h5", "r") as f:
+with h5py.File("../train_inputs/larger_scaler_info.h5", "r") as f:
     scaler_Y_mean = f["Y_mean"][()]
     scaler_Y_scale = f["Y_scale"][()]
 
 # Load test targets directly from H5
-with h5py.File("../data/smaller_ttbar_test.h5", "r") as f:
+with h5py.File("../train_inputs/larger_ttbar_test.h5", "r") as f:
     Y_test_scaled = f["Y"][:]
 
 model.eval()
@@ -280,60 +280,6 @@ RMS_GeV = root_mean_squared_error(Y_test_geV,Y_pred_geV)
 MAE_GeV = mean_absolute_error(Y_test_geV,Y_pred_geV)
 R2_GeV = r2_score(Y_test_geV,Y_pred_geV)
 
-### ------------------------------ Feature Importances ------------------------------ ###
-
-def make_prediction(model, data_loader):
-    model.eval()
-    list_of_predictions = []
-    with torch.no_grad():
-        for inputs, _ in data_loader:
-            inputs = inputs.to(device)
-            outputs = model(inputs)
-            list_of_predictions.append(outputs.cpu().numpy())
-    return np.vstack(list_of_predictions).flatten()
-
-def calc_feature_importances(model, X_tensor, Y_tensor, Y_vals, batch_size):
-    # Make dataloader for baseline
-    baseline_dataset = TensorDataset(X_tensor, Y_tensor)
-    baseline_loader = DataLoader(baseline_dataset, batch_size=batch_size, shuffle=False)
-    
-    # Calculate baseline scores
-    baseline_pred = make_prediction(model, baseline_loader)
-    baseline_score = r2_score(Y_vals, baseline_pred)
-    importances = []
-    
-    for feature_idx in range(X_tensor.shape[1]):
-        # Shuffle the values of the current feature
-        X_tensor_shuffled = X_tensor.clone()
-        shuffle_idx = torch.randperm(X_tensor.shape[0])
-        X_tensor_shuffled[:, feature_idx] = X_tensor_shuffled[:, feature_idx][shuffle_idx]
-        
-        # Make shuffled dataloader
-        shuffled_dataset = TensorDataset(X_tensor_shuffled, Y_tensor)
-        shuffled_dataloader = DataLoader(shuffled_dataset, batch_size=batch_size, shuffle=False)
-        
-        # Calculate shuffled score
-        shuffled_pred = make_prediction(model, shuffled_dataloader)
-        shuffled_score = r2_score(Y_vals, shuffled_pred)
-        
-        # Subtract scores for importance
-        importances.append(baseline_score - shuffled_score)
-    
-    return np.array(importances)
-
-# Load validation data for feature importance
-with h5py.File("../data/smaller_ttbar_val.h5", "r") as f:
-    X_val = torch.tensor(f["X"][:], dtype=torch.float32)
-    Y_val = torch.tensor(f["Y"][:], dtype=torch.float32)
-
-# Calculate feature importances
-feature_importances = calc_feature_importances(model, X_val, Y_val, Y_val.numpy(), batch_size)
-
-# Sort features by importance
-sorted_idx = np.argsort(feature_importances)[::-1]
-sorted_names = np.array(feature_names)[sorted_idx]
-sorted_importances = feature_importances[sorted_idx]
-    
 # ------------------------------ Plotting ------------------------------ #
 import matplotlib.pyplot as plt
 
@@ -388,7 +334,7 @@ axes[1,1].legend()
 axes[1,1].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("ttbar_Mass.png")
+plt.savefig("../plots/ttbar_Mass.png")
 plt.show()
 
 # ------------------------------ Save Predictions to File (Use for ORIGIN) ------------------------------ #
@@ -398,20 +344,20 @@ results = np.column_stack([Y_test_geV, Y_pred_geV, Y_pred_geV - Y_test_geV])
 
 # Save to file
 np.savetxt(
-    "ttbar_mass_predictions.txt", 
+    "../train_outputs/ttbar_mass_predictions.txt", 
     results,
     header="True_Mass_GeV  Predicted_Mass_GeV  Resolution_GeV",
     fmt="%.2f",
     delimiter="  "
 )
 
-import pandas as pd
-
-importance_df = pd.DataFrame({
-    "feature": sorted_names,
-    "importance": sorted_importances
-})
-importance_df.to_csv("ttbar_mass_importances.csv", index=False)
-
 print("Saved predictions to ../data/ttbar_mass_predictions.txt")
-print("Saved feature importances to ../data/ttbar_mass_importances.csv")
+
+print("---------------Metrics---------------")
+print(f"Epochs: {N_epochs}")
+print(f"Batch size: {batch_size}")
+print(f"LR: {learning_rate}")
+print(f"MSE in GeV: {MSE_GeV:.4f}")
+print(f"RMSE in GeV: {RMS_GeV:.4f}")
+print(f"MAE in GeV: {MAE_GeV:.4f}")
+print(f"R^2 in GeV: {R2_GeV:.4f}")
