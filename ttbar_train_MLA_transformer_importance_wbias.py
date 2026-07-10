@@ -161,9 +161,6 @@ class Transformer(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(32, 1)
         )
-
-        self.bias = nn.Parameter(torch.zeros(1)) # Add a bias learning parameter
-
         
     def forward(self, x):
         # Split features into groups
@@ -218,7 +215,7 @@ class Transformer(nn.Module):
         # Attention pooling
         pooled = self.pool(tokens)
         
-        return self.classifier(pooled) + self.bias
+        return self.classifier(pooled)
 
 # Create model with latent compression
 model = Transformer(
