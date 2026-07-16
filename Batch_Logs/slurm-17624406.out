@@ -1,0 +1,70 @@
+# ---------- BATCH RECIEPT ---------- #
+Job ID: 17624406
+Job Name: ttbar_flow.sh
+Submit Time: Thu 16 Jul 14:10:29 BST 2026
+Node: node873.csf3.man.alces.network
+User: q44882cb
+Partition: gpuL
+GPUs: 1
+Working Directory: /mnt/iusers01/fse-ugpgt01/phy01/q44882cb/HEP_Sigmoids
+# ----------------------------------- #
+
+Job started at : 2026-07-16 14:11:54
+Using cuda device with number of GPUs: 1
+ContextEmbeddor(
+  (lin1): Linear(in_features=126, out_features=128, bias=True)
+  (lin2): Linear(in_features=128, out_features=64, bias=True)
+  (gelu): GELU(approximate='none')
+)
+ConditionalVelocityNet(
+  (net): Sequential(
+    (0): Linear(in_features=66, out_features=256, bias=True)
+    (1): GELU(approximate='none')
+    (2): Linear(in_features=256, out_features=256, bias=True)
+    (3): GELU(approximate='none')
+    (4): Linear(in_features=256, out_features=1, bias=True)
+  )
+)
+Beginning Training Loop
+============================================================
+Epoch 10/800 | Train Loss: 0.8689 | Val Loss: 0.7727 | Loss Diff : 0.0962
+Epoch Time: 2.09s | Total Time: 0 minutes 27.69s
+============================================================
+Epoch 20/800 | Train Loss: 0.7172 | Val Loss: 0.7213 | Loss Diff : 0.0041
+Epoch Time: 2.12s | Total Time: 0 minutes 48.72s
+============================================================
+Epoch 30/800 | Train Loss: 0.7038 | Val Loss: 0.7150 | Loss Diff : 0.0112
+Epoch Time: 2.09s | Total Time: 1 minutes 9.83s
+============================================================
+Epoch 40/800 | Train Loss: 0.6896 | Val Loss: 0.7179 | Loss Diff : 0.0284
+Epoch Time: 2.09s | Total Time: 1 minutes 30.88s
+============================================================
+Epoch 50/800 | Train Loss: 0.6816 | Val Loss: 0.7038 | Loss Diff : 0.0221
+Epoch Time: 2.10s | Total Time: 1 minutes 51.96s
+============================================================
+Epoch 60/800 | Train Loss: 0.6827 | Val Loss: 0.7019 | Loss Diff : 0.0193
+Epoch Time: 2.13s | Total Time: 2 minutes 13.02s
+============================================================
+Epoch 70/800 | Train Loss: 0.6726 | Val Loss: 0.7073 | Loss Diff : 0.0348
+Epoch Time: 2.13s | Total Time: 2 minutes 34.10s
+============================================================
+Epoch 80/800 | Train Loss: 0.6768 | Val Loss: 0.7090 | Loss Diff : 0.0321
+Epoch Time: 2.09s | Total Time: 2 minutes 55.20s
+============================================================
+Epoch 90/800 | Train Loss: 0.6774 | Val Loss: 0.6964 | Loss Diff : 0.0190
+Epoch Time: 2.07s | Total Time: 3 minutes 16.27s
+============================================================
+Early stopping triggered.
+Final Epoch before early stop [97/800], Training Loss: 0.6782, Validation Loss: 0.6967
+Saved predictions to ../data/ttbar_mass_predictions_flowmatch.txt
+---------------Metrics---------------
+Epochs: 97/800
+Batch size: 4096
+LR: 0.001
+MSE in GeV: 8606.6556
+RMSE in GeV: 92.7721
+MAE in GeV: 63.8471
+R^2 in GeV: 0.7392
+KL Divergence: 0.0201
+Pearson correlation coeff : 0.8600
+Wasserstein Distance: 16.5926
