@@ -70,7 +70,7 @@ class ContextEmbeddor(nn.Module):
         return x
 
 class ConditionalVelocityNet(nn.Module):
-    def __init__(self,  Ninputs, Ncontext, hidden=128):
+    def __init__(self, Ninputs, Ncontext, hidden=128):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(Ninputs + 1 + Ncontext, hidden),
