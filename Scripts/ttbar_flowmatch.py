@@ -56,9 +56,9 @@ from torch.utils.data import TensorDataset, DataLoader
 
 batch_size = 4096
 
-dataset_train = CustomDataset("../train_inputs/smaller_ttbar_train.h5")
-dataset_val = CustomDataset("../train_inputs/smaller_ttbar_val.h5")
-dataset_test = CustomDataset("../train_inputs/smaller_ttbar_test.h5")
+dataset_train = CustomDataset("../train_inputs/larger_ttbar_train.h5")
+dataset_val = CustomDataset("../train_inputs/larger_ttbar_val.h5")
+dataset_test = CustomDataset("../train_inputs/larger_ttbar_test.h5")
 
 N_inputs = dataset_train[0][0].shape[0]
 
@@ -88,11 +88,27 @@ class ContextEmbeddor(nn.Module):
         x1 = self.gelu(self.lin1(x))
         return self.lin2(x1)
 
-class ConditionalVelocityNet(nn.Module):
-    def __init__(self, Ninput, Ncontext, Nhidden=128):
+class SinusoidalPositionEmbeddings(nn.Module):
+    def __init__(self, dim):
         super().__init__()
+        self.dim = dim
+
+    def forward(self, time):
+        device = time.device
+        half_dim = self.dim // 2
+        embeddings = np.log(10000) / (half_dim - 1)
+        embeddings = torch.exp(torch.arange(half_dim, device=device) * -embeddings)
+        embeddings = time * embeddings
+        embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1)
+        return embeddings
+
+class ConditionalVelocityNet(nn.Module):
+    def __init__(self, Ninput, Ncontext, TimeEmbedder, Nhidden=128):
+        super().__init__()
+        self.TimeEmbedder = TimeEmbedder
+
         self.net = nn.Sequential(
-            nn.Linear(Ninput + 1 + Ncontext, Nhidden),
+            nn.Linear(Ninput + self.TimeEmbedder.dim + Ncontext, Nhidden),
             nn.GELU(),
             nn.Linear(Nhidden,Nhidden),
             nn.GELU(),
@@ -100,10 +116,11 @@ class ConditionalVelocityNet(nn.Module):
         )
     
     def forward(self, x ,t ,c):
+        t = self.TimeEmbedder(t)
         inp = torch.cat([x,t,c], dim=1)
         return self.net(inp)
 
-def conditional_flow_matching_loss(VelocityNet, ContEmbedder, X_train_batch, Y_train_batch):
+def conditional_flow_matching_loss(VelocityNet, ContEmbedder, X_train_batch, Y_train_batch, sigma_min=1e-4):
     # Target Sampling
     y1 = Y_train_batch.unsqueeze(1)
 
@@ -117,8 +134,8 @@ def conditional_flow_matching_loss(VelocityNet, ContEmbedder, X_train_batch, Y_t
     # Sample time t
     t = torch.rand(sample_batch_size,1,device=device)
 
-    # Interpolate between x0 and x1
-    xt = (1 - t) * y0 + t * y1
+    # Interpolate between x0 and x1 (enforced straight line interpolation)
+    xt = (1 - (1 - sigma_min) * t) * y0 + t * y1
 
     v_pred = VelocityNet(xt,t,c)
     v_target = y1 - y0
@@ -168,7 +185,13 @@ def sample_flow_mean(
 embed_dim = 64
 
 Embedder = ContextEmbeddor(Ninputs=N_inputs,Nembed=embed_dim).to(device)
-VelNet = ConditionalVelocityNet(Ninput=1,Ncontext=embed_dim,Nhidden=256).to(device)
+Sinusoidembed = SinusoidalPositionEmbeddings(dim=embed_dim).to(device)
+
+VelNet = ConditionalVelocityNet(
+    Ninput=1, 
+    Ncontext=embed_dim, 
+    TimeEmbedder=Sinusoidembed,
+    Nhidden=256).to(device)
 
 print(Embedder)
 print(VelNet)
@@ -244,6 +267,12 @@ for epoch in range(N_epochs):
         
         # Perform a backward pass + Optimisation
         train_loss.backward()
+        
+        torch.nn.utils.clip_grad_norm_(
+            list(VelNet.parameters()) + list(Embedder.parameters()), 
+            max_norm=1.0 
+            )
+
         optimiser.step()
 
         epoch_train_loss += train_loss.item() * batch_x.size(0)
@@ -299,12 +328,12 @@ for epoch in range(N_epochs):
 ### ------------------------------ Evaluate Model ------------------------------ ###
 
 # Load scaler info
-with h5py.File("../train_inputs/smaller_scaler_info.h5", "r") as f:
+with h5py.File("../train_inputs/larger_scaler_info.h5", "r") as f:
     scaler_Y_mean = f["Y_mean"][()]
     scaler_Y_scale = f["Y_scale"][()]
 
 # Load test targets directly from H5
-with h5py.File("../train_inputs/smaller_ttbar_test.h5", "r") as f:
+with h5py.File("../train_inputs/larger_ttbar_test.h5", "r") as f:
     Y_test_scaled = f["Y"][:]
 
 VelNet.eval()
@@ -378,7 +407,7 @@ axes[0,0].grid(True, alpha=0.3)
 # Text box with metrics
 axes[0,0].text(
     0.98, 0.98,
-    f"Epochs: {final_epoch}/{N_epochs}\nBatch size: {batch_size}\nLR: {learning_rate}\nMSE in GeV: {MSE_GeV:.4f}\nRMSE in GeV: {RMS_GeV:.4f}\nMAE in GeV: {MAE_GeV:.4f}\nR^2 in GeV: {R2_GeV:.4f}\nPearson correlation coeff : {correlation_matrix[0, 1]:.4f}\nWasserstein Distance: {WD:.4f}",
+    f"Epochs: {final_epoch}/{N_epochs}\nBatch size: {batch_size}\nLR: {learning_rate}\nMSE in GeV: {MSE_GeV:.4f}\nRMSE in GeV: {RMS_GeV:.4f}\nMAE in GeV: {MAE_GeV:.4f}\nR^2 in GeV: {R2_GeV:.4f}\nPearson correlation coeff : {correlation_matrix[0, 1]:.4f}",
     fontsize=10,
     bbox=dict(boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8),
     ha="right",
@@ -411,7 +440,7 @@ axes[1,0].grid(True, alpha=0.3)
 # Text box with KL Divergence
 axes[1,0].text(
     0.98, 0.98,
-    f"KL Divergence: {KLD:.4f}",
+    f"KL Divergence: {KLD:.4f}\nWasserstein Distance: {WD:.4f}",
     fontsize=10,
     bbox=dict(boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8),
     ha="right",
@@ -431,7 +460,7 @@ axes[1,1].legend()
 axes[1,1].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("../plots/ttbar_Mass_flowmatch.png")
+plt.savefig("../plots/1ttbar_Mass_flowmatch_large.png")
 plt.show()
 
 # ------------------------------ Save Predictions to File (Use for ORIGIN) ------------------------------ #
@@ -441,14 +470,14 @@ results = np.column_stack([Y_test_geV, Y_pred_geV, Y_pred_geV - Y_test_geV])
 
 # Save to file
 np.savetxt(
-    "../train_outputs/ttbar_mass_predictions_flowmatch.txt", 
+    "../train_outputs/1ttbar_mass_predictions_flowmatch_large.txt", 
     results,
     header="True_Mass_GeV  Predicted_Mass_GeV  Resolution_GeV",
     fmt="%.2f",
     delimiter="  "
 )
 
-print("Saved predictions to ../data/ttbar_mass_predictions_flowmatch.txt")
+print("Saved predictions to ../data/1ttbar_mass_predictions_flowmatch_large.txt")
 
 print("---------------Metrics---------------")
 print(f"Epochs: {final_epoch}/{N_epochs}")
