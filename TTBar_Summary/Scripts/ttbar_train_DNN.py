@@ -1,12 +1,12 @@
 ### ------------------------------ Code Brief ------------------------------ ###
 
 # Selects device (GPU)
-# Loads prepared and preprocessed data from "ttbar_data_prep_and_preprocess.py"
-# Converts X and target into tensors
-# Employers dataloaders for batching
-# Defines model architecture
+# Loads prepared and preprocessed data from 4 separate files (train,test,val,scaler)
+# Converts X and target into tensors using a custom dataset
+# Employs dataloaders for batching, with num workers = 4
+# Defines MLA transformer model architecture with attention pooling
 # Defines an early stopping mechanism
-# Defines loss function, optimiser and scheduler
+# Defines loss function (Huber loss), optimiser (Wadam) and scheduler (reduceLRonplateu)
 # Runs training loop
 # Evaluates model
 # Generates plots
@@ -56,92 +56,49 @@ from torch.utils.data import TensorDataset, DataLoader
 
 batch_size = 4096
 
-dataset_train = CustomDataset("../data/smaller_ttbar_train.h5")
-dataset_val = CustomDataset("../data/smaller_ttbar_val.h5")
-dataset_test = CustomDataset("../data/smaller_ttbar_test.h5")
+dataset_train = CustomDataset("larger_importance_trimmed_ttbar_train.h5")
+dataset_val = CustomDataset("larger_importance_trimmed_ttbar_val.h5")
+dataset_test = CustomDataset("larger_importance_trimmed_ttbar_test.h5")
 
-with h5py.File("../data/feature_labels.h5", "r") as f:
-    feature_names = f["Feature_labels"][:].astype(str)
+train_loader = DataLoader(
+    dataset_train, 
+    batch_size=batch_size, 
+    shuffle=True,
+    num_workers=4,
+    pin_memory=True)
 
-train_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
-val_loader = DataLoader(dataset_val, batch_size=batch_size, shuffle=False)
-test_loader = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
+val_loader = DataLoader(
+    dataset_val, 
+    batch_size=batch_size, 
+    shuffle=False,
+    num_workers=4,
+    pin_memory=True
+)
+test_loader = DataLoader(
+    dataset_test, 
+    batch_size=batch_size, 
+    shuffle=False,
+    num_workers=4,
+    pin_memory=True
+)
 
-### ------------------------------ Create Model Architecture ------------------------------ ###
-
+### ------------------------------ Transformer Model Architecture with Multi-head Latent Attention Mechansim ------------------------------ ###
 import torch.nn as nn
-import torch.nn.functional as F
 
-dropout_rate = 0.02
+# Create a DNN ( 4 layers, 128 neurons )
 
-import torch.nn as nn
-
-class GroupedTransformer(nn.Module):
-    def __init__(self, d_model=64, nhead=4, num_layers=4, dropout=0.1):
-        super().__init__()
-        
-        # Project each group to d_model
-        self.jet_proj = nn.Linear(104, d_model)
-        self.muon_proj = nn.Linear(10, d_model)
-        self.electron_proj = nn.Linear(10, d_model)
-        self.met_proj = nn.Linear(2, d_model)
-        
-        # Transformer encoder
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=d_model * 4,
-            dropout=dropout,
-            batch_first=True
-        )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        
-        # Classifier
-        self.classifier = nn.Sequential(
-            nn.Linear(d_model, 128),
-            nn.LayerNorm(128),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(128, 64),
-            nn.LayerNorm(64),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(64, 32),
-            nn.LayerNorm(32),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(32, 1)
-        )
-    
-    def pool(self, x):
-        return x.mean(dim=1)
-        
-    def forward(self, x):
-        # Split 126 features into groups
-        jet_features = x[:, :104]
-        muon_features = x[:, 104:114]
-        electron_features = x[:, 114:124]
-        met_features = x[:, 124:126]
-        
-        # Project each group to token and concatenate
-        jet_token = self.jet_proj(jet_features).unsqueeze(1)
-        muon_token = self.muon_proj(muon_features).unsqueeze(1)
-        electron_token = self.electron_proj(electron_features).unsqueeze(1)
-        met_token = self.met_proj(met_features).unsqueeze(1)
-        
-        tokens = torch.cat([jet_token, muon_token, electron_token, met_token], dim=1)
-        
-        # Transformer
-        tokens = self.transformer(tokens)
-        
-        # Global pooling
-        pooled = self.pool(tokens)
-        
-        return self.classifier(pooled)
-
-model = GroupedTransformer(d_model=64,nhead=4,num_layers=4,dropout=0.1).to(device)
-
-print(model)
+model = nn.Sequential(
+    nn.Linear(54, 128),
+    nn.GELU(),
+    nn.Dropout(0.2),
+    nn.Linear(128, 64),
+    nn.GELU(),
+    nn.Dropout(0.2),
+    nn.Linear(64, 32),
+    nn.GELU(),
+    nn.Dropout(0.2),
+    nn.Linear(32, 1)
+).to(device)
 
 ### ------------------------------ Early stopping mechanism ------------------------------ ###
 
@@ -171,20 +128,21 @@ learning_rate = 0.001
 optimiser = torch.optim.AdamW(model.parameters(), lr=learning_rate) # Use the WAdam optimiser
 
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-scheduler = ReduceLROnPlateau(optimiser, mode='min', factor=0.5, patience=10)
+scheduler = ReduceLROnPlateau(optimiser, mode='min', factor=0.5, patience=5)
 
 ### ------------------------------ Run Training Loop ------------------------------ ###
 
 # Run a training loop
-
+print("\n")
+print("="*60)
 print("Beginning Training Loop")
 print("="*60)
 
 losses = [] # Keeps track of loss @ every epoch, this is for visualisation purposes
 val_losses = [] # Keeps track of validation loss @ each epoch
-times = [] # Keep track of times
+times = [] # Keep track of times @ each epoch 
 
-N_epochs = 20 # Number of epochs we iterate over
+N_epochs = 50 # Number of epochs we iterate over
 
 for epoch in range(N_epochs):
 
@@ -229,7 +187,7 @@ for epoch in range(N_epochs):
     # Call scheduler outside batch loop 
     scheduler.step(avg_val_loss)
 
-    if (epoch + 1) % 10 == 0: # If epoch number + 1 is divisible by 10, print ... Training
+    if (epoch + 1) % 1 == 0: # If epoch number + 1 is divisible by 10, print ... Training
         print(f"Epoch {epoch+1}/{N_epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Loss Diff : {np.abs(avg_val_loss - avg_train_loss):.4f} | Epoch Time: {epoch_time:.2f}s | Total Time: {np.sum(times):.2f}s")
 
     if epoch >= 50: # Starts the early stop loss after the 50th epoch 
@@ -244,12 +202,12 @@ for epoch in range(N_epochs):
 ### ------------------------------ Evaluate Model ------------------------------ ###
 
 # Load scaler info
-with h5py.File("../data/smaller_scaler_info.h5", "r") as f:
+with h5py.File("larger_importance_trimmed_scaler_info.h5", "r") as f:
     scaler_Y_mean = f["Y_mean"][()]
     scaler_Y_scale = f["Y_scale"][()]
 
 # Load test targets directly from H5
-with h5py.File("../data/smaller_ttbar_test.h5", "r") as f:
+with h5py.File("larger_importance_trimmed_ttbar_test.h5", "r") as f:
     Y_test_scaled = f["Y"][:]
 
 model.eval()
@@ -263,6 +221,8 @@ with torch.no_grad():
 
 pred = torch.concatenate(list_of_predictions)
 Y_pred = pred.detach().cpu().numpy().flatten()
+
+### ------------------------------ Calculate Performance Metrics ------------------------------ ###
 
 from sklearn.metrics import mean_squared_error,root_mean_squared_error,mean_absolute_error,r2_score
 
@@ -280,60 +240,60 @@ RMS_GeV = root_mean_squared_error(Y_test_geV,Y_pred_geV)
 MAE_GeV = mean_absolute_error(Y_test_geV,Y_pred_geV)
 R2_GeV = r2_score(Y_test_geV,Y_pred_geV)
 
-### ------------------------------ Feature Importances ------------------------------ ###
-
-def make_prediction(model, data_loader):
-    model.eval()
-    list_of_predictions = []
-    with torch.no_grad():
-        for inputs, _ in data_loader:
-            inputs = inputs.to(device)
-            outputs = model(inputs)
-            list_of_predictions.append(outputs.cpu().numpy())
-    return np.vstack(list_of_predictions).flatten()
-
-def calc_feature_importances(model, X_tensor, Y_tensor, Y_vals, batch_size):
-    # Make dataloader for baseline
-    baseline_dataset = TensorDataset(X_tensor, Y_tensor)
-    baseline_loader = DataLoader(baseline_dataset, batch_size=batch_size, shuffle=False)
+def kl_divergence(pred, target, bins=100):
+    # Identify common range
+    min_val = min(pred.min(), target.min())
+    max_val = max(pred.max(), target.max())
     
-    # Calculate baseline scores
-    baseline_pred = make_prediction(model, baseline_loader)
-    baseline_score = r2_score(Y_vals, baseline_pred)
-    importances = []
+    # Create histograms using bins and common range
+    pred_hist, _ = np.histogram(pred, bins=bins, range=(min_val, max_val))
+    target_hist, _ = np.histogram(target, bins=bins, range=(min_val, max_val))
     
-    for feature_idx in range(X_tensor.shape[1]):
-        # Shuffle the values of the current feature
-        X_tensor_shuffled = X_tensor.clone()
-        shuffle_idx = torch.randperm(X_tensor.shape[0])
-        X_tensor_shuffled[:, feature_idx] = X_tensor_shuffled[:, feature_idx][shuffle_idx]
+    # Convert to probabilities
+    pred_probs = pred_hist / (pred_hist.sum() + 1e-10) # Addition of 1e-10 stops any divisions by 0
+    target_probs = target_hist / (target_hist.sum() + 1e-10)
+    
+    # Avoid log(0)
+    pred_probs = np.clip(pred_probs, 1e-10, 1.0)
+    target_probs = np.clip(target_probs, 1e-10, 1.0)
+    
+    # KL divergence: target || pred
+    kl = np.sum(target_probs * np.log(target_probs / pred_probs))
+    
+    return kl
+
+def bootstrap_kl_divergence(pred, target, n_bootstrap=1000, bins=100):
+    
+    kl_original = kl_divergence(pred, target, bins)
+    
+    # Combine samples for resampling
+    combined = np.concatenate([pred, target])
+    n_pred = len(pred)
+    n_target = len(target)
+    
+    # Bootstrap resampling
+    kl_bootstrap = []
+    for _ in range(n_bootstrap):
+        # Resample with replacement
+        pred_resample = np.random.choice(combined, size=n_pred, replace=True)
+        target_resample = np.random.choice(combined, size=n_target, replace=True)
         
-        # Make shuffled dataloader
-        shuffled_dataset = TensorDataset(X_tensor_shuffled, Y_tensor)
-        shuffled_dataloader = DataLoader(shuffled_dataset, batch_size=batch_size, shuffle=False)
-        
-        # Calculate shuffled score
-        shuffled_pred = make_prediction(model, shuffled_dataloader)
-        shuffled_score = r2_score(Y_vals, shuffled_pred)
-        
-        # Subtract scores for importance
-        importances.append(baseline_score - shuffled_score)
+        # Calculate KL on resampled data
+        kl_bootstrap.append(kl_divergence(pred_resample, target_resample, bins))
     
-    return np.array(importances)
-
-# Load validation data for feature importance
-with h5py.File("../data/smaller_ttbar_val.h5", "r") as f:
-    X_val = torch.tensor(f["X"][:], dtype=torch.float32)
-    Y_val = torch.tensor(f["Y"][:], dtype=torch.float32)
-
-# Calculate feature importances
-feature_importances = calc_feature_importances(model, X_val, Y_val, Y_val.numpy(), batch_size)
-
-# Sort features by importance
-sorted_idx = np.argsort(feature_importances)[::-1]
-sorted_names = np.array(feature_names)[sorted_idx]
-sorted_importances = feature_importances[sorted_idx]
+    # Calculate statistics, chopping off lower 2.5% and upper 2.5%
+    kl_std = np.std(kl_bootstrap)
+    ci_lower = np.percentile(kl_bootstrap, 2.5)
+    ci_upper = np.percentile(kl_bootstrap, 97.5)
     
+    return kl_original, kl_std, (ci_lower, ci_upper), kl_bootstrap
+
+kl_original, kl_std, kl_ci, kl_bootstrap = bootstrap_kl_divergence(
+    Y_pred_geV, Y_test_geV, n_bootstrap=1000, bins=100
+)
+
+print(f"Epochs: {N_epochs}\nBatch size: {batch_size}\nLR: {learning_rate}\nMSE in GeV: {MSE_GeV:.4f}\nRMSE in GeV: {RMS_GeV:.4f}\nMAE in GeV: {MAE_GeV:.4f}\nR^2 in GeV: {R2_GeV:.4f}\nKL-Divergence : {kl_original:.4f} +- {kl_std:.4f}")
+
 # ------------------------------ Plotting ------------------------------ #
 import matplotlib.pyplot as plt
 
@@ -370,10 +330,21 @@ axes[0,1].set_ylabel("Predicted ttbar mass (GeV)")
 axes[0,1].set_title(f"TTBar mass")
 
 # Predicted masses histogram
-axes[1,0].hist(Y_pred_geV, bins=50, color='blue', alpha=0.7, edgecolor='black')
-axes[1,0].set_xlabel("Predicted ttbar mass (GeV)")
+axes[1,0].hist(Y_pred_geV, bins=100, color='blue', alpha=0.7, edgecolor='black')
+axes[1,0].hist(Y_test_geV, bins=100, color='red', alpha=0.5, edgecolor='black')
+axes[1,0].set_xlabel("Predicted ttbar mass (blue) vs true ttbar mass (red) in (GeV)")
 axes[1,0].set_ylabel("Number of Events")
 axes[1,0].set_title("Predicted Mass Distribution")
+axes[1,0].text(
+    0.98, 0.98,
+    f"KL Divergence: {kl_original:.4f} ± {kl_std:.4f}\n"
+    f"95% CI: [{kl_ci[0]:.4f}, {kl_ci[1]:.4f}]",
+    fontsize=10,
+    bbox=dict(boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8),
+    ha="right",
+    va="top",
+    transform=axes[1,0].transAxes
+)
 axes[1,0].grid(True, alpha=0.3)
 
 # Resolution histogram
@@ -388,7 +359,7 @@ axes[1,1].legend()
 axes[1,1].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("ttbar_Mass.png")
+plt.savefig("ttbar_train_DNN.png")
 plt.show()
 
 # ------------------------------ Save Predictions to File (Use for ORIGIN) ------------------------------ #
@@ -398,20 +369,12 @@ results = np.column_stack([Y_test_geV, Y_pred_geV, Y_pred_geV - Y_test_geV])
 
 # Save to file
 np.savetxt(
-    "ttbar_mass_predictions.txt", 
+    "ttbar_train_DNN.txt", 
     results,
     header="True_Mass_GeV  Predicted_Mass_GeV  Resolution_GeV",
     fmt="%.2f",
     delimiter="  "
 )
 
-import pandas as pd
-
-importance_df = pd.DataFrame({
-    "feature": sorted_names,
-    "importance": sorted_importances
-})
-importance_df.to_csv("ttbar_mass_importances.csv", index=False)
-
-print("Saved predictions to ../data/ttbar_mass_predictions.txt")
-print("Saved feature importances to ../data/ttbar_mass_importances.csv")
+print("Saved predictions to ttbar_train_DNN.txt")
+print("Saved analysis plot to ttbar_train_DNN.png")

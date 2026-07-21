@@ -1,0 +1,123 @@
+# ---------- BATCH RECIEPT ---------- #
+Job ID: 17649896
+Job Name: scratch_train.sh
+Submit Time: Fri 17 Jul 09:10:20 BST 2026
+Job description: Experimental MLA Transformer mechanism, AdamW , 4 heads 4 layers, 64 dim, attention pooling, num workers = 8, LR = 0.001, added a learnable bias parameter. KL divergence is now included in the loss function, using reduceLRonPlat
+Job description cont: Model is now multi-regression, training on 8 target features, to output a series of plots of the kinematic features. The invariant mass is now calculated using awkward vectors.
+Job description cont: Model uses mass in the loss function and calculates final mass using E.
+Node: node882.csf3.man.alces.network
+User: m64196am
+Partition: gpuL
+GPUs: 1
+Working Directory: /mnt/iusers01/fse-ugpgt01/phy01/m64196am
+# ----------------------------------- #
+
+Job started at : 2026-07-17 09:11:29
+Using cuda device with number of GPUs: 1
+Transformer(
+  (jet_0_compressor): Linear(in_features=8, out_features=16, bias=True)
+  (jet_0_decompressor): Linear(in_features=16, out_features=64, bias=True)
+  (jet_1_compressor): Linear(in_features=8, out_features=16, bias=True)
+  (jet_1_decompressor): Linear(in_features=16, out_features=64, bias=True)
+  (jet_2_compressor): Linear(in_features=8, out_features=16, bias=True)
+  (jet_2_decompressor): Linear(in_features=16, out_features=64, bias=True)
+  (jet_3_compressor): Linear(in_features=8, out_features=16, bias=True)
+  (jet_3_decompressor): Linear(in_features=16, out_features=64, bias=True)
+  (muon_compressor): Linear(in_features=10, out_features=16, bias=True)
+  (muon_decompressor): Linear(in_features=16, out_features=64, bias=True)
+  (electron_compressor): Linear(in_features=10, out_features=16, bias=True)
+  (electron_decompressor): Linear(in_features=16, out_features=64, bias=True)
+  (met_compressor): Linear(in_features=2, out_features=16, bias=True)
+  (met_decompressor): Linear(in_features=16, out_features=64, bias=True)
+  (transformer): TransformerEncoder(
+    (layers): ModuleList(
+      (0-3): 4 x TransformerEncoderLayer(
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=True)
+        )
+        (linear1): Linear(in_features=64, out_features=256, bias=True)
+        (dropout): Dropout(p=0.1, inplace=False)
+        (linear2): Linear(in_features=256, out_features=64, bias=True)
+        (norm1): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+        (norm2): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+        (dropout1): Dropout(p=0.1, inplace=False)
+        (dropout2): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (pool): AttentionPooling(
+    (attention): Linear(in_features=64, out_features=1, bias=True)
+  )
+  (classifier): Sequential(
+    (0): Linear(in_features=64, out_features=128, bias=True)
+    (1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+    (2): GELU(approximate='none')
+    (3): Dropout(p=0.1, inplace=False)
+    (4): Linear(in_features=128, out_features=64, bias=True)
+    (5): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (6): GELU(approximate='none')
+    (7): Dropout(p=0.1, inplace=False)
+    (8): Linear(in_features=64, out_features=32, bias=True)
+    (9): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+    (10): GELU(approximate='none')
+    (11): Dropout(p=0.1, inplace=False)
+    (12): Linear(in_features=32, out_features=8, bias=True)
+  )
+)
+Total parameters: 227,961
+
+
+============================================================
+Beginning Training Loop
+============================================================
+Epoch 1/20 | Train Loss: 0.1972 (KL: 0.4393) | Val Loss: 0.1195 (KL: 0.0671) | Train - Val Loss Diff : 0.0777 | Mass Train Loss : 25.8937 | Mass Val Loss : 14.2142 | Epoch Time: 21.42s | Total Time: 21.42s
+Epoch 2/20 | Train Loss: 0.1306 (KL: 0.0428) | Val Loss: 0.0961 (KL: 0.0386) | Train - Val Loss Diff : 0.0344 | Mass Train Loss : 19.9875 | Mass Val Loss : 12.1627 | Epoch Time: 11.54s | Total Time: 32.96s
+Epoch 3/20 | Train Loss: 0.1148 (KL: 0.0282) | Val Loss: 0.0886 (KL: 0.0336) | Train - Val Loss Diff : 0.0261 | Mass Train Loss : 18.2982 | Mass Val Loss : 11.1106 | Epoch Time: 11.56s | Total Time: 44.53s
+Epoch 4/20 | Train Loss: 0.1084 (KL: 0.0233) | Val Loss: 0.0850 (KL: 0.0289) | Train - Val Loss Diff : 0.0234 | Mass Train Loss : 17.3691 | Mass Val Loss : 10.3145 | Epoch Time: 11.56s | Total Time: 56.09s
+Epoch 5/20 | Train Loss: 0.1047 (KL: 0.0207) | Val Loss: 0.0809 (KL: 0.0189) | Train - Val Loss Diff : 0.0238 | Mass Train Loss : 16.7807 | Mass Val Loss : 10.3965 | Epoch Time: 11.55s | Total Time: 67.64s
+Epoch 6/20 | Train Loss: 0.1023 (KL: 0.0190) | Val Loss: 0.0808 (KL: 0.0234) | Train - Val Loss Diff : 0.0215 | Mass Train Loss : 16.3867 | Mass Val Loss : 9.4301 | Epoch Time: 11.61s | Total Time: 79.25s
+Epoch 7/20 | Train Loss: 0.1006 (KL: 0.0179) | Val Loss: 0.0782 (KL: 0.0177) | Train - Val Loss Diff : 0.0224 | Mass Train Loss : 16.1489 | Mass Val Loss : 10.0091 | Epoch Time: 11.62s | Total Time: 90.87s
+Epoch 8/20 | Train Loss: 0.0992 (KL: 0.0170) | Val Loss: 0.0770 (KL: 0.0153) | Train - Val Loss Diff : 0.0222 | Mass Train Loss : 15.9942 | Mass Val Loss : 9.2910 | Epoch Time: 11.59s | Total Time: 102.46s
+Epoch 9/20 | Train Loss: 0.0983 (KL: 0.0163) | Val Loss: 0.0768 (KL: 0.0147) | Train - Val Loss Diff : 0.0215 | Mass Train Loss : 15.9373 | Mass Val Loss : 8.9907 | Epoch Time: 11.63s | Total Time: 114.09s
+Epoch 10/20 | Train Loss: 0.0975 (KL: 0.0158) | Val Loss: 0.0764 (KL: 0.0144) | Train - Val Loss Diff : 0.0211 | Mass Train Loss : 15.9131 | Mass Val Loss : 8.8879 | Epoch Time: 11.60s | Total Time: 125.69s
+Epoch 11/20 | Train Loss: 0.0968 (KL: 0.0152) | Val Loss: 0.0761 (KL: 0.0153) | Train - Val Loss Diff : 0.0207 | Mass Train Loss : 15.9107 | Mass Val Loss : 8.5105 | Epoch Time: 11.64s | Total Time: 137.33s
+Epoch 12/20 | Train Loss: 0.0963 (KL: 0.0146) | Val Loss: 0.0756 (KL: 0.0140) | Train - Val Loss Diff : 0.0207 | Mass Train Loss : 15.9493 | Mass Val Loss : 8.8007 | Epoch Time: 11.63s | Total Time: 148.96s
+Epoch 13/20 | Train Loss: 0.0958 (KL: 0.0144) | Val Loss: 0.0758 (KL: 0.0177) | Train - Val Loss Diff : 0.0200 | Mass Train Loss : 15.9563 | Mass Val Loss : 8.0486 | Epoch Time: 11.63s | Total Time: 160.59s
+Epoch 14/20 | Train Loss: 0.0954 (KL: 0.0140) | Val Loss: 0.0749 (KL: 0.0113) | Train - Val Loss Diff : 0.0205 | Mass Train Loss : 15.9516 | Mass Val Loss : 9.1010 | Epoch Time: 11.64s | Total Time: 172.23s
+Epoch 15/20 | Train Loss: 0.0950 (KL: 0.0135) | Val Loss: 0.0743 (KL: 0.0104) | Train - Val Loss Diff : 0.0207 | Mass Train Loss : 15.9508 | Mass Val Loss : 8.3683 | Epoch Time: 11.66s | Total Time: 183.89s
+Epoch 16/20 | Train Loss: 0.0945 (KL: 0.0136) | Val Loss: 0.0744 (KL: 0.0121) | Train - Val Loss Diff : 0.0202 | Mass Train Loss : 15.9747 | Mass Val Loss : 8.2378 | Epoch Time: 11.62s | Total Time: 195.51s
+Epoch 17/20 | Train Loss: 0.0940 (KL: 0.0133) | Val Loss: 0.0738 (KL: 0.0127) | Train - Val Loss Diff : 0.0203 | Mass Train Loss : 15.9508 | Mass Val Loss : 8.8767 | Epoch Time: 11.66s | Total Time: 207.17s
+Epoch 18/20 | Train Loss: 0.0937 (KL: 0.0132) | Val Loss: 0.0736 (KL: 0.0126) | Train - Val Loss Diff : 0.0201 | Mass Train Loss : 15.9449 | Mass Val Loss : 8.4233 | Epoch Time: 11.62s | Total Time: 218.79s
+Epoch 19/20 | Train Loss: 0.0935 (KL: 0.0132) | Val Loss: 0.0734 (KL: 0.0106) | Train - Val Loss Diff : 0.0201 | Mass Train Loss : 15.9396 | Mass Val Loss : 8.0880 | Epoch Time: 11.62s | Total Time: 230.41s
+Epoch 20/20 | Train Loss: 0.0930 (KL: 0.0131) | Val Loss: 0.0735 (KL: 0.0120) | Train - Val Loss Diff : 0.0195 | Mass Train Loss : 15.9175 | Mass Val Loss : 8.0128 | Epoch Time: 11.58s | Total Time: 241.99s
+
+
+============================================================
+TARGET FEATURE METRICS
+============================================================
+top_px: MSE=0.1486, R²=0.8518, MAE = 0.2832
+
+top_py: MSE=0.1480, R²=0.8517, MAE = 0.2837
+
+top_pz: MSE=0.1074, R²=0.8923, MAE = 0.2232
+
+antitop_px: MSE=0.1484, R²=0.8521, MAE = 0.2819
+
+antitop_py: MSE=0.1466, R²=0.8528, MAE = 0.2803
+
+antitop_pz: MSE=0.1056, R²=0.8943, MAE = 0.2232
+
+top_E: MSE=0.2252, R²=0.7737, MAE = 0.2935
+
+antitop_E: MSE=0.2219, R²=0.7777, MAE = 0.2949
+
+============================================================
+
+============================================================
+INVARIANT MASS METRICS
+============================================================
+MSE:  8652.4253
+RMSE: 93.0184 GeV
+MAE:  64.3212 GeV
+R²:   0.7414
+============================================================
