@@ -1,0 +1,59 @@
+# ---------- BATCH RECIEPT ---------- #
+Job ID: 17758708
+Job Name: ttbar_flow.sh
+Submit Time: Tue 21 Jul 10:43:51 BST 2026
+Node: node870.csf3.man.alces.network
+User: q44882cb
+Partition: gpuL
+GPUs: 1
+Working Directory: /mnt/iusers01/fse-ugpgt01/phy01/q44882cb/HEP_Sigmoids
+# ----------------------------------- #
+
+Job started at : 2026-07-21 10:46:01
+Using cuda device with number of GPUs: 1
+ContextEmbeddor(
+  (lin1): Linear(in_features=126, out_features=128, bias=True)
+  (lin2): Linear(in_features=128, out_features=64, bias=True)
+  (gelu): GELU(approximate='none')
+)
+ConditionalVelocityNet(
+  (TimeEmbedder): SinusoidalPositionEmbeddings()
+  (net): Sequential(
+    (0): Linear(in_features=129, out_features=256, bias=True)
+    (1): GELU(approximate='none')
+    (2): Linear(in_features=256, out_features=256, bias=True)
+    (3): GELU(approximate='none')
+    (4): Linear(in_features=256, out_features=1, bias=True)
+  )
+)
+Beginning Training Loop
+============================================================
+Epoch 10/50 | Train Loss: 0.6793 | Val Loss: 0.6808 | Loss Diff : 0.0014
+Epoch Time: 14.24s | Total Time: 2 minutes 23.36s
+============================================================
+Epoch 20/50 | Train Loss: 0.6588 | Val Loss: 0.6542 | Loss Diff : 0.0046
+Epoch Time: 14.39s | Total Time: 4 minutes 45.09s
+============================================================
+Epoch 30/50 | Train Loss: 0.6474 | Val Loss: 0.6489 | Loss Diff : 0.0014
+Epoch Time: 14.42s | Total Time: 7 minutes 9.37s
+============================================================
+Epoch 40/50 | Train Loss: 0.6329 | Val Loss: 0.6371 | Loss Diff : 0.0041
+Epoch Time: 14.40s | Total Time: 9 minutes 33.66s
+============================================================
+Epoch 50/50 | Train Loss: 0.6287 | Val Loss: 0.6391 | Loss Diff : 0.0105
+Epoch Time: 14.47s | Total Time: 11 minutes 57.75s
+============================================================
+Training Complete
+============================================================
+Saved predictions to ../data/ttbar_mass_predictions_flowmatch_mean.txt
+---------------Metrics---------------
+Epochs: 50/50
+Batch size: 4096
+LR: 0.001
+MSE in GeV: 7478.4432
+RMSE in GeV: 86.4780
+MAE in GeV: 61.0451
+R^2 in GeV: 0.7754
+KL Divergence: 0.0051
+Pearson correlation coeff : 0.8838
+Wasserstein Distance: 14.3406
