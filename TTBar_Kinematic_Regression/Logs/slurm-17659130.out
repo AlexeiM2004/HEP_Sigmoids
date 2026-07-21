@@ -1,0 +1,92 @@
+# ---------- BATCH RECIEPT ---------- #
+Job ID: 17659130
+Job Name: scratch_train.sh
+Submit Time: Fri 17 Jul 14:41:33 BST 2026
+Job description: Experimenting with individual and combined system masses to fix the R^2
+Node: node877.csf3.man.alces.network
+User: m64196am
+Partition: gpuL
+GPUs: 1
+Working Directory: /mnt/iusers01/fse-ugpgt01/phy01/m64196am
+# ----------------------------------- #
+
+Job started at : 2026-07-17 14:43:16
+Using cuda device with number of GPUs: 1
+
+============================================================
+CONTROL PANEL
+============================================================
+
+DATA CONFIGURATION
+  train_file: kinematic_features_train.h5
+  val_file: kinematic_features_val.h5
+  test_file: kinematic_features_test.h5
+  scaler_file: kinematic_features_scaler.h5
+  batch_size: 4096
+  num_workers: 4
+  pin_memory: True
+
+MODEL CONFIGURATION
+  d_model: 64
+  nhead: 4
+  num_layers: 4
+  dropout: 0.1
+  latent_dim: 16
+
+TRAINING CONFIGURATION
+  patience: 10
+  min_delta: 0.0
+  min_early_stop: 40
+  num_epochs: 50
+  learning_rate: 0.005
+  weight_decay: 0.01
+  kl_weight_max: 0.1
+  kl_ramp_epochs: 15
+  kl_bins: 100
+  kl_sigma: 0.2
+  kl_eps: 1e-08
+  mass_loss_weight: 0.001
+  scheduler_factor: 0.5
+  scheduler_patience: 5
+  scheduler_min_lr: 1e-06
+
+
+============================================================
+Beginning Training Loop
+============================================================
+Epoch 10/50 | Train Loss: 0.1304 (KL: 0.0214) | Val Loss: 0.1098 (KL: 0.0207) | Train - Val Loss Diff : 0.0206 | Mass Train Loss : 12.7837 | Mass Val Loss : 8.7716 | Epoch Time: 11.90s | Total Time: 127.55s
+Epoch 20/50 | Train Loss: 0.1116 (KL: 0.0149) | Val Loss: 0.0870 (KL: 0.0147) | Train - Val Loss Diff : 0.0245 | Mass Train Loss : 13.0414 | Mass Val Loss : 9.1028 | Epoch Time: 11.93s | Total Time: 246.79s
+Epoch 30/50 | Train Loss: 0.1093 (KL: 0.0143) | Val Loss: 0.0832 (KL: 0.0154) | Train - Val Loss Diff : 0.0261 | Mass Train Loss : 12.8824 | Mass Val Loss : 7.8669 | Epoch Time: 11.90s | Total Time: 366.03s
+Epoch 40/50 | Train Loss: 0.1050 (KL: 0.0131) | Val Loss: 0.0800 (KL: 0.0112) | Train - Val Loss Diff : 0.0251 | Mass Train Loss : 12.5597 | Mass Val Loss : 9.2969 | Epoch Time: 11.92s | Total Time: 485.19s
+Epoch 50/50 | Train Loss: 0.1024 (KL: 0.0123) | Val Loss: 0.0785 (KL: 0.0147) | Train - Val Loss Diff : 0.0239 | Mass Train Loss : 12.3492 | Mass Val Loss : 8.1873 | Epoch Time: 11.91s | Total Time: 604.47s
+
+
+============================================================
+TARGET FEATURE METRICS
+============================================================
+top_px: MSE=0.1367, R²=0.8637, MAE = 0.2662
+
+top_py: MSE=0.1361, R²=0.8636, MAE = 0.2654
+
+top_pz: MSE=0.1058, R²=0.8939, MAE = 0.2151
+
+antitop_px: MSE=0.1381, R²=0.8624, MAE = 0.2677
+
+antitop_py: MSE=0.1368, R²=0.8627, MAE = 0.2665
+
+antitop_pz: MSE=0.1061, R²=0.8938, MAE = 0.2152
+
+top_E: MSE=0.2265, R²=0.7724, MAE = 0.2815
+
+antitop_E: MSE=0.2276, R²=0.7721, MAE = 0.2815
+
+============================================================
+
+============================================================
+INVARIANT MASS METRICS
+============================================================
+MSE:  7256.0588
+RMSE: 85.1825 GeV
+MAE:  56.6399 GeV
+R²:   0.7831
+============================================================
