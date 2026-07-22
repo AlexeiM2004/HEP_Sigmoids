@@ -268,7 +268,7 @@ val_losses = [] # Keeps track of validation loss @ each epoch
 times = [] # Keep track of times
 
 
-N_epochs = 50 # Number of epochs we iterate over
+N_epochs = 250 # Number of epochs we iterate over
 
 for epoch in range(N_epochs):
 
@@ -345,7 +345,7 @@ for epoch in range(N_epochs):
 
     final_epoch = epoch+1
     
-    if epoch >= 50: # Starts the early stop loss after the 50th epoch 
+    if epoch >= 50: # Starts the early stop loss checks after the warmup epochs 
         early_stopping(avg_val_loss)
         if early_stopping.early_stop:
             print("Early stopping triggered.")
@@ -407,7 +407,7 @@ epsilon = 1e-10
 P = np.clip(P, epsilon, 1)
 Q = np.clip(Q, epsilon, 1)
 
-# 4. Calculate proper KL Divergence
+# 4. Calculate KL Divergence
 KLD = np.sum(rel_entr(P, Q))
 
 # Inverse transform using saved scaler
@@ -491,7 +491,7 @@ axes[1,1].legend()
 axes[1,1].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("../plots/ttbar_mass_flowmatch_mean.png")
+plt.savefig("../plots/ttbar_mass_flowmatch.png")
 plt.show()
 
 # ------------------------------ Save Predictions to File (Use for ORIGIN) ------------------------------ #
@@ -501,14 +501,14 @@ results = np.column_stack([Y_test_geV, Y_pred_geV, Y_pred_geV - Y_test_geV])
 
 # Save to file
 np.savetxt(
-    "../train_outputs/ttbar_mass_predictions_flowmatch_mean.txt", 
+    "../train_outputs/ttbar_mass_predictions_flowmatch.txt", 
     results,
     header="True_Mass_GeV  Predicted_Mass_GeV  Resolution_GeV",
     fmt="%.2f",
     delimiter="  "
 )
 
-print("Saved predictions to ../data/ttbar_mass_predictions_flowmatch_mean.txt")
+print("Saved predictions to ../data/ttbar_mass_predictions_flowmatch.txt")
 
 print("---------------Metrics---------------")
 print(f"Epochs: {final_epoch}/{N_epochs}")
