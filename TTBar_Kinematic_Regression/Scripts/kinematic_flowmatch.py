@@ -43,12 +43,13 @@ class CustomDataset(Dataset):
         with h5py.File(file_path, "r") as f:
             self.X = torch.tensor(f["X"][:], dtype=torch.float32)
             self.Y = torch.tensor(f["Y"][:], dtype=torch.float32)
+            self.M = torch.tensor(f["M"][:], dtype=torch.float32)
 
     def __len__(self):
         return len(self.X)
 
     def __getitem__(self, idx):
-        return self.X[idx], self.Y[idx]
+        return self.X[idx], self.Y[idx], self.M[idx]
 
 # ------------------------------ DataLoaders ------------------------------ #
 
@@ -56,25 +57,40 @@ from torch.utils.data import TensorDataset, DataLoader
 
 batch_size = 4096
 
-dataset_train = CustomDataset("../train_inputs/larger_ttbar_train.h5")
-dataset_val = CustomDataset("../train_inputs/larger_ttbar_val.h5")
-dataset_test = CustomDataset("../train_inputs/larger_ttbar_test.h5")
+dataset_train = CustomDataset("kinematic_features_train.h5")
+dataset_val = CustomDataset("kinematic_features_val.h5")
+dataset_test = CustomDataset("kinematic_features_test.h5")
 
 N_inputs = dataset_train[0][0].shape[0]
 
 with h5py.File("../train_inputs/feature_labels.h5", "r") as f:
     feature_names = f["Feature_labels"][:].astype(str)
 
-train_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
-val_loader = DataLoader(dataset_val, batch_size=batch_size, shuffle=False)
-test_loader = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
+train_loader = DataLoader(
+    dataset_train, 
+    batch_size=batch_size, 
+    shuffle=True,
+    num_workers=4,
+    pin_memory=True)
+
+val_loader = DataLoader(
+    dataset_val, 
+    batch_size=batch_size, 
+    shuffle=False,
+    num_workers=4,
+    pin_memory=True
+)
+test_loader = DataLoader(
+    dataset_test, 
+    batch_size=batch_size, 
+    shuffle=False,
+    num_workers=4,
+    pin_memory=True
+)
 
 ### ------------------------------ Create Model Architecture ------------------------------ ###
 
 import torch.nn.functional as F
-
-dropout_rate = 0.02
-
 import torch.nn as nn
 
 class ContextEmbeddor(nn.Module):
@@ -112,7 +128,7 @@ class ConditionalVelocityNet(nn.Module):
             nn.GELU(),
             nn.Linear(Nhidden,Nhidden),
             nn.GELU(),
-            nn.Linear(Nhidden,1)
+            nn.Linear(Nhidden,8)
         )
     
     def forward(self, x ,t ,c):
@@ -210,7 +226,7 @@ def sample_flow_mean(
 
         for i in range (n_steps):
             t_val = i / n_steps
-            t = torch.full((B, S, 1), t_val, device=device)
+            t = torch.full((B, S, 1), t_val / n_steps, device=device)
 
             # Flatten batch and predict initial velocity
             v1 = model(x.reshape(B*S, 1), t.reshape(B*S, 1), c.reshape(B*S, -1)).reshape(B, S, 1)
@@ -258,7 +274,6 @@ scheduler = ReduceLROnPlateau(optimiser, mode='min', factor=0.5, patience=5)
 
 ### ------------------------------ Run Training Loop ------------------------------ ###
 
-# Run a training loop
 
 print("Beginning Training Loop")
 print("="*60)
@@ -279,10 +294,11 @@ for epoch in range(N_epochs):
 
     epoch_train_loss = 0.0
 
-    for batch_x,batch_y in train_loader:
+    for batch_x, batch_y, batch_m in train_loader:
         # Ensure batch is on GPU
         batch_x = batch_x.to(device)
         batch_y = batch_y.to(device)
+        batch_m = batch_m.to(device)
 
         optimiser.zero_grad()
 
@@ -362,6 +378,8 @@ print("="*60)
 with h5py.File("../train_inputs/larger_scaler_info.h5", "r") as f:
     scaler_Y_mean = f["Y_mean"][()]
     scaler_Y_scale = f["Y_scale"][()]
+    scaler_M_mean = torch.tensor(f["M_mean"][:], device=device, dtype=torch.float32)
+    scaler_M_scale = torch.tensor(f["M_scale"][:], device=device, dtype=torch.float32) 
 
 # Load test targets directly from H5
 with h5py.File("../train_inputs/larger_ttbar_test.h5", "r") as f:
@@ -372,148 +390,275 @@ Embedder.eval()
 
 list_of_predictions = []
 with torch.no_grad():
-    for inputs, targets in test_loader:
+    for inputs, targets, _ in test_loader:
         inputs = inputs.to(device) 
         outputs = sample_flow_mean(VelNet, Embedder, inputs, n_steps=250)
-        #outputs = sample_flow_repeated(VelNet, Embedder, inputs, n_steps=250)
         pred_mean = torch.mean(outputs,dim=1)
 
         list_of_predictions.append(pred_mean.cpu())
 
-pred = torch.concatenate(list_of_predictions)
-Y_pred = pred.detach().cpu().numpy().flatten()
+Y_pred = torch.concatenate(list_of_predictions).detach().cpu().numpy().flatten()
 
 from sklearn.metrics import mean_squared_error,root_mean_squared_error,mean_absolute_error,r2_score
 from scipy.special import rel_entr
 from scipy.stats import wasserstein_distance
 
-MSE = mean_squared_error(Y_test_scaled, Y_pred)
-RMS = root_mean_squared_error(Y_test_scaled,Y_pred)
-MAE = mean_absolute_error(Y_test_scaled,Y_pred)
-R2 = r2_score(Y_test_scaled,Y_pred)
+# Compute and display metrics for each target feature
 
-# 1. Histogram the data to turn event regression into a PDF
-# Use identical binning for both!
-bins = np.linspace(0, max(np.max(Y_test_scaled),np.max(Y_pred)), num=100) # Adjust range to your P_T spectrum
-p_counts, _ = np.histogram(Y_test_scaled, bins=bins)
-q_counts, _ = np.histogram(Y_pred, bins=bins)
+# Store target feature names in an array
+target_names = ['top_px', 'top_py', 'top_pz', 
+                'antitop_px', 'antitop_py', 'antitop_pz', 'top_E', 'antitop_E']
 
-# 2. Normalize so they sum to 1 (making them valid probabilities)
+print("\n")
+print("="*60)
+print("TARGET FEATURE METRICS")
+print("="*60)
+
 epsilon = 1e-10
-P = (p_counts + epsilon) / np.sum(p_counts + epsilon)
-Q = (q_counts + epsilon) / np.sum(q_counts + epsilon)
+r2_per_dim = []
+KLD_per_dim = []
+for i in range(8):
+    bins = np.linspace(0, max(np.max(Y_test_scaled[:, i]),np.max(Y_pred[:, i])), num=100) # Adjust range to your P_T spectrum
+    p_counts, _ = np.histogram(Y_test_scaled[:, i], bins=bins)
+    q_counts, _ = np.histogram(Y_pred[:, i], bins=bins)
 
-# 3. Calculate KL Divergence
-KLD = np.sum(rel_entr(P, Q))
+    P = (p_counts + epsilon) / (np.sum(p_counts) + epsilon)
+    Q = (q_counts + epsilon) /( np.sum(q_counts) + epsilon)
 
-# Inverse transform using saved scaler
-Y_pred_geV = ((Y_pred * scaler_Y_scale) + scaler_Y_mean).flatten()
-Y_test_geV = ((Y_test_scaled * scaler_Y_scale) + scaler_Y_mean).flatten()
+    KLD = np.sum(rel_entr(P, Q))
+    KLD_per_dim.append(KLD)
+    mse = mean_squared_error(Y_test_scaled[:, i], Y_pred[:, i])
+    r2 = r2_score(Y_test_scaled[:, i], Y_pred[:, i])
+    r2_per_dim.append(r2)
+    mae = mean_absolute_error(Y_test_scaled[:,i], Y_pred[:,i])
+    print(f"{target_names[i]}: MSE={mse:.4f}, R²={r2:.4f}, MAE = {mae:.4f}, KLD={KLD:.4f}\n")
+print("="*60)
 
-correlation_matrix = np.corrcoef(Y_test_geV, Y_pred_geV)
-MSE_GeV = mean_squared_error(Y_test_geV, Y_pred_geV)
-RMS_GeV = root_mean_squared_error(Y_test_geV,Y_pred_geV)
-MAE_GeV = mean_absolute_error(Y_test_geV,Y_pred_geV)
-R2_GeV = r2_score(Y_test_geV,Y_pred_geV)
-WD = wasserstein_distance(Y_test_geV, Y_pred_geV)
+# Inverse transform
+Y_pred_geV = Y_pred * scaler_Y_scale + scaler_Y_mean
+Y_test_geV = Y_test_scaled * scaler_Y_scale + scaler_Y_mean
 
 # ------------------------------ Plotting ------------------------------ #
 import matplotlib.pyplot as plt
 
-fig, axes = plt.subplots(2, 2, figsize=(24, 14))  # 2 rows, 2 columns
+fig1, axes1 = plt.subplots(1, 2, figsize=(16, 12))
 
-# Loss plot
-axes[0,0].plot(losses, label='Train Loss')
-axes[0,0].plot(val_losses, label='Validation Loss')
-axes[0,0].set_xlabel('Epoch')
-axes[0,0].set_ylabel('Loss')
-axes[0,0].set_title('Training and Validation Loss')
-axes[0,0].legend()
-axes[0,0].grid(True, alpha=0.3)
+# Loss curve plot
+axes1[0].plot(losses, label='Kinematic Train Loss')
+axes1[0].plot(val_losses, label='Kinematic Validation Loss')
+axes1[0].plot(kl_losses, label='KL Train Loss')
+axes1[0].plot(kl_val_losses, label='KL Validation Loss')
+axes1[0].plot(mass_losses, label='Mass Train Loss')
+axes1[0].plot(mass_val_losses, label='Mass Validation Loss')
+axes1[0].set_xlabel('Epoch')
+axes1[0].set_ylabel('Loss')
+axes1[0].set_title('Training and Validation Loss')
+axes1[0].legend()
+axes1[0].grid(True, alpha=0.3)
 
-# Text box with metrics
-axes[0,0].text(
-    0.98, 0.98,
-    f"Epochs: {final_epoch}/{N_epochs}\nBatch size: {batch_size}\nLR: {learning_rate}\nMSE in GeV: {MSE_GeV:.4f}\nRMSE in GeV: {RMS_GeV:.4f}\nMAE in GeV: {MAE_GeV:.4f}\nR^2 in GeV: {R2_GeV:.4f}\nPearson correlation coeff : {correlation_matrix[0, 1]:.4f}",
-    fontsize=10,
-    bbox=dict(boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8),
-    ha="right",
-    va="top",
-    transform=axes[0,0].transAxes
-)
-
-# True vs Predicted plot 
-
-# Plot true vs predicted in GeV
-axes[0,1].scatter(Y_test_geV, Y_pred_geV, alpha=0.3, s=1)
-axes[0,1].plot([Y_test_geV.min(), Y_test_geV.max()], 
-         [Y_test_geV.min(), Y_test_geV.max()], 'b--')
-axes[0,1].set_xlabel("True ttbar mass (GeV)")
-axes[0,1].set_ylabel("Predicted ttbar mass (GeV)")
-axes[0,1].set_title(f"TTBar mass")
-
-# Predicted masses histogram
-n_bin = 50
-_,bin_edges = np.histogram(Y_pred_geV,bins=n_bin)
-
-axes[1,0].hist(Y_pred_geV, bins=bin_edges, color='blue', histtype='step', label='Predicted')
-axes[1,0].hist(Y_test_geV, bins=bin_edges, color='red', histtype='step', label='True')
-axes[1,0].set_xlabel("Predicted ttbar mass (GeV)")
-axes[1,0].set_ylabel("Number of Events")
-axes[1,0].set_title("Predicted Mass Distribution")
-axes[1,0].legend()
-axes[1,0].grid(True, alpha=0.3)
-
-# Text box with KL Divergence
-axes[1,0].text(
-    0.98, 0.98,
-    f"KL Divergence: {KLD:.4f}\nWasserstein Distance: {WD:.4f}",
-    fontsize=10,
-    bbox=dict(boxstyle="round", facecolor="white", edgecolor="black", alpha=0.8),
-    ha="right",
-    va="top",
-    transform=axes[1,0].transAxes
-)
-
-# Resolution histogram
-resolution = Y_pred_geV - Y_test_geV
-axes[1,1].hist(resolution, bins=50, color='red', alpha=0.7, edgecolor='black')
-axes[1,1].axvline(x=0, color='black', linestyle='--', linewidth=2, label='Perfect')
-axes[1,1].axvline(x=np.mean(resolution), color='blue', linestyle='-', linewidth=2, label=f'Mean = {np.mean(resolution):.2f} GeV')
-axes[1,1].set_xlabel("Resolution (Predicted - True) [GeV]")
-axes[1,1].set_ylabel("Number of Events")
-axes[1,1].set_title("Resolution Distribution")
-axes[1,1].legend()
-axes[1,1].grid(True, alpha=0.3)
+# R squared values per dimension in bar chart representation plot
+bars = axes1[1].bar(range(8), r2_per_dim, color='blue', edgecolor='black')
+axes1[1].set_xticks(range(8))
+axes1[1].set_xticklabels(target_names, rotation=45, ha='right')
+axes1[1].set_ylabel('R-Squared')
+axes1[1].set_title('R-Squared Bar Chart')
+axes1[1].set_ylim([0,1])
+axes1[1].grid(True, alpha=0.3)
+# Add value labels on bars individually
+for bar, val in zip(bars, r2_per_dim):
+    axes1[1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                   f'{val:.3f}', ha='center', va='bottom', fontsize=9)
 
 plt.tight_layout()
-plt.savefig("../plots/ttbar_mass_flowmatch.png")
+plt.savefig("summary_plots.png")
+
+### ------------------------------ Target Feature Distribution and Resolution ------------------------------ #
+
+fig2, axes2 = plt.subplots(2, 8, figsize=(24, 8))
+
+for i in range(8):
+    # Distribution (True vs Pred)
+    axes2[0, i].hist(Y_test_scaled[:, i], bins=100, density=True, histtype='step',
+                     label='True', color='blue', linewidth=1.5)
+    axes2[0, i].hist(Y_pred[:, i], bins=100, density=True, histtype='step',
+                     label='Pred', color='red', linewidth=1.5)
+    axes2[0, i].set_title(f'{target_names[i]}')
+    axes2[0, i].legend()
+    axes2[0, i].grid(True, alpha=0.3)
+    
+    # Resolution (Pred - True)
+    residuals = Y_pred[:, i] - Y_test_scaled[:, i]
+    axes2[1, i].hist(residuals, bins=50, color='red', alpha=0.7, edgecolor='black')
+    axes2[1, i].axvline(0, color='black', linestyle='--', linewidth=2, label='Perfect')
+    axes2[1, i].axvline(np.mean(residuals), color='blue', linestyle='-', linewidth=2,
+                       label=f'μ={np.mean(residuals):.3f}')
+    axes2[1, i].grid(True, alpha=0.3)
+    axes2[1, i].legend()
+
+# Set x-labels for top row
+for i in range(8):
+    axes2[0, i].set_xlabel('Distribution (True vs Pred)')
+
+# Set x-labels for bottom row
+for i in range(8):
+    axes2[1, i].set_xlabel('Resolution (Pred - True)')
+
+plt.tight_layout()
+plt.savefig("per_target_feature_distribution_resolution.png")
+
+### ------------------------------ Target Feature Scatter Plots ------------------------------ #
+
+fig3, axes3 = plt.subplots(2, 4, figsize=(20, 10))
+
+for i, ax in enumerate(axes3.flatten()):
+    # Scatter plot: True vs Pred
+    ax.scatter(Y_test_scaled[:, i], Y_pred[:, i], alpha=0.1, s=1, color='blue')
+    
+    # Perfect prediction line
+    min_val = min(Y_test_scaled[:, i].min(), Y_pred[:, i].min())
+    max_val = max(Y_test_scaled[:, i].max(), Y_pred[:, i].max())
+    ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect')
+    
+    # R² for this dimension
+    r2 = r2_score(Y_test_scaled[:, i], Y_pred[:, i])
+    
+    ax.set_xlabel('True')
+    ax.set_ylabel('Predicted')
+    ax.set_title(f'{target_names[i]}\nR² = {r2:.4f}')
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+plt.tight_layout()
+plt.savefig("per_dimension_scatter_plots.png")
 plt.show()
 
+### ------------------------------ Invariant Mass Calculation Using Awk Vectors ------------------------------ #
+
+import awkward as ak
+
+Y_pred_unscaled = Y_pred * scaler_Y_scale + scaler_Y_mean
+Y_test_unscaled = Y_test_scaled * scaler_Y_scale + scaler_Y_mean
+
+# Convert NumPy to Awkward arrays
+Y_pred_awk = ak.from_numpy(Y_pred_unscaled)
+Y_test_awk = ak.from_numpy(Y_test_unscaled)
+
+# Predicted vectors
+top_pred = vector.Array(
+    ak.zip({
+        'px': Y_pred_awk[:, 0],
+        'py': Y_pred_awk[:, 1],
+        'pz': Y_pred_awk[:, 2],
+        'E': Y_pred_awk[:,6]
+    })
+)
+
+antitop_pred = vector.Array(
+    ak.zip({
+        'px': Y_pred_awk[:, 3],
+        'py': Y_pred_awk[:, 4],
+        'pz': Y_pred_awk[:, 5],
+        'E': Y_pred_awk[:,7]
+    })
+)
+
+# True vectors
+top_true = vector.Array(
+    ak.zip({
+        'px': Y_test_awk[:, 0],
+        'py': Y_test_awk[:, 1],
+        'pz': Y_test_awk[:, 2],
+        'E': Y_test_awk[:,6]
+    })
+)
+
+antitop_true = vector.Array(
+    ak.zip({
+        'px': Y_test_awk[:, 3],
+        'py': Y_test_awk[:, 4],
+        'pz': Y_test_awk[:, 5],
+        'E': Y_test_awk[:,7]
+    })
+)
+
+# Add them
+ttbar_pred = top_pred + antitop_pred
+ttbar_true = top_true + antitop_true
+
+# Get invariant mass
+M_pred = ttbar_pred.mass
+M_true = ttbar_true.mass
+
+### ------------------------------ Invariant Mass Plots ------------------------------ #
+
+fig4, axes4 = plt.subplots(1, 3, figsize=(18, 6))
+
+# Histogram comparison
+axes4[0].hist(M_true, bins=100, density=True, histtype='step', 
+              label='True M_ttbar', color='blue', linewidth=1.5)
+axes4[0].hist(M_pred, bins=100, density=True, histtype='step', 
+              label='Predicted M_ttbar', color='red', linewidth=1.5)
+axes4[0].set_xlabel('M_ttbar (GeV)')
+axes4[0].set_ylabel('Number of Events')
+axes4[0].set_title('Invariant Mass Distribution')
+axes4[0].legend()
+axes4[0].grid(True, alpha=0.3)
+
+# True vs Predicted scatter
+axes4[1].scatter(M_true, M_pred, alpha=0.1, s=1, color='blue')
+min_m = min(ak.min(M_true), ak.min(M_pred))
+max_m = max(ak.max(M_true), ak.max(M_pred))
+axes4[1].plot([min_m, max_m], [min_m, max_m], 'r--', linewidth=2, label='Perfect')
+axes4[1].set_xlabel('True M_ttbar (GeV)')
+axes4[1].set_ylabel('Predicted M_ttbar (GeV)')
+axes4[1].set_title('True vs Predicted Invariant Mass')
+axes4[1].legend()
+axes4[1].grid(True, alpha=0.3)
+
+# Resolution histogram
+mass_resolution = M_pred - M_true
+axes4[2].hist(mass_resolution, bins=50, density=True, color='red',  histtype='step')
+axes4[2].axvline(0, color='black', linestyle='--', linewidth=2, label='Perfect')
+axes4[2].axvline(np.mean(mass_resolution), color='blue', linestyle='-', linewidth=2,
+                 label=f'Mean = {np.mean(mass_resolution):.2f} GeV')
+axes4[2].axvline(np.median(mass_resolution), color='green', linestyle='-', linewidth=2,
+                 label=f'Median = {np.median(mass_resolution):.2f} GeV')
+axes4[2].set_xlabel('Resolution (Pred - True) [GeV]')
+axes4[2].set_ylabel('Number of Events')
+axes4[2].set_title('Invariant Mass Resolution')
+axes4[2].legend()
+axes4[2].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig("invariant_mass_plots.png")
+plt.show()
+
+### ------------------------------ Print Metrics for Invariant Mass ------------------------------ #
+
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+
+MSE_mass = mean_squared_error(M_true, M_pred)
+RMSE_mass = np.sqrt(MSE_mass)
+MAE_mass = mean_absolute_error(M_true, M_pred)
+R2_mass = r2_score(M_true, M_pred)
+
+print("\n" + "="*60)
+print("INVARIANT MASS METRICS")
+print("="*60)
+print(f"MSE:  {MSE_mass:.4f}")
+print(f"RMSE: {RMSE_mass:.4f} GeV")
+print(f"MAE:  {MAE_mass:.4f} GeV")
+print(f"R²:   {R2_mass:.4f}")
+print("="*60)
+ 
 # ------------------------------ Save Predictions to File (Use for ORIGIN) ------------------------------ #
 
-# Create a 2D array with true and predicted masses
-results = np.column_stack([Y_test_geV, Y_pred_geV, Y_pred_geV - Y_test_geV])
+results = np.column_stack([M_true, M_pred, M_pred - M_true])
 
-# Save to file
 np.savetxt(
-    "../train_outputs/ttbar_mass_predictions_flowmatch.txt", 
+    "ttbar_invariant_mass_results.txt", 
     results,
     header="True_Mass_GeV  Predicted_Mass_GeV  Resolution_GeV",
     fmt="%.2f",
     delimiter="  "
 )
-
-print("Saved predictions to ../data/ttbar_mass_predictions_flowmatch.txt")
-
-print("---------------Metrics---------------")
-print(f"Epochs: {final_epoch}/{N_epochs}")
-print(f"Batch size: {batch_size}")
-print(f"LR: {learning_rate}")
-print(f"MSE in GeV: {MSE_GeV:.4f}")
-print(f"RMSE in GeV: {RMS_GeV:.4f}")
-print(f"MAE in GeV: {MAE_GeV:.4f}")
-print(f"R^2 in GeV: {R2_GeV:.4f}")
-print(f"KL Divergence: {KLD:.4f}")
-print(f"Pearson correlation coeff : {correlation_matrix[0, 1]:.4f}")
-print(f"Wasserstein Distance: {WD:.4f}")
