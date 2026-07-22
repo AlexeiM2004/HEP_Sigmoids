@@ -1,0 +1,246 @@
+# ---------- BATCH RECIEPT ---------- #
+Job ID: 17760745
+Job Name: scratch_train.sh
+Submit Time: Tue 21 Jul 12:31:48 BST 2026
+Job description: Kinematic Regression MHA with no mass loss
+Node: node872.csf3.man.alces.network
+User: m64196am
+Partition: gpuL
+GPUs: 1
+Working Directory: /mnt/iusers01/fse-ugpgt01/phy01/m64196am
+# ----------------------------------- #
+
+Job started at : 2026-07-21 12:31:58
+Using cuda device with number of GPUs: 1
+
+============================================================
+CONTROL PANEL
+============================================================
+
+DATA CONFIGURATION
+  train_file: kinematic_features_train.h5
+  val_file: kinematic_features_val.h5
+  test_file: kinematic_features_test.h5
+  scaler_file: kinematic_features_scaler.h5
+  batch_size: 4096
+  num_workers: 4
+  pin_memory: True
+
+MODEL CONFIGURATION
+  d_model: 64
+  nhead: 4
+  num_layers: 4
+  dropout: 0.1
+
+TRAINING CONFIGURATION
+  patience: 10
+  min_delta: 0.0
+  min_early_stop: 150
+  num_epochs: 150
+  learning_rate: 0.005
+  weight_decay: 0.01
+  kl_weight_max: 0.1
+  kl_ramp_epochs: 15
+  kl_bins: 100
+  kl_sigma: 0.2
+  kl_eps: 1e-08
+  mass_loss_weight: 0.0001
+  scheduler_factor: 0.5
+  scheduler_patience: 5
+  scheduler_min_lr: 1e-06
+
+
+============================================================
+Beginning Training Loop
+============================================================
+Epoch 1/150 | Train Loss: 0.3525 (KL: 1.9199) | Val Loss: 0.3283 (KL: 2.0256) | Train - Val Loss Diff : 0.0241 | Epoch Time: 10.81s | Total Time: 10.81s
+Epoch 2/150 | Train Loss: 0.3100 (KL: 0.6889) | Val Loss: 0.2475 (KL: 0.2308) | Train - Val Loss Diff : 0.0625 | Epoch Time: 10.52s | Total Time: 21.34s
+Epoch 3/150 | Train Loss: 0.2045 (KL: 0.1021) | Val Loss: 0.1745 (KL: 0.0680) | Train - Val Loss Diff : 0.0300 | Epoch Time: 10.54s | Total Time: 31.87s
+Epoch 4/150 | Train Loss: 0.1510 (KL: 0.0475) | Val Loss: 0.1166 (KL: 0.0468) | Train - Val Loss Diff : 0.0344 | Epoch Time: 10.52s | Total Time: 42.39s
+Epoch 5/150 | Train Loss: 0.1278 (KL: 0.0314) | Val Loss: 0.1018 (KL: 0.0245) | Train - Val Loss Diff : 0.0259 | Epoch Time: 10.53s | Total Time: 52.92s
+Epoch 6/150 | Train Loss: 0.1186 (KL: 0.0262) | Val Loss: 0.0929 (KL: 0.0262) | Train - Val Loss Diff : 0.0257 | Epoch Time: 10.52s | Total Time: 63.44s
+Epoch 7/150 | Train Loss: 0.1116 (KL: 0.0229) | Val Loss: 0.0894 (KL: 0.0201) | Train - Val Loss Diff : 0.0222 | Epoch Time: 10.53s | Total Time: 73.97s
+Epoch 8/150 | Train Loss: 0.1087 (KL: 0.0210) | Val Loss: 0.0874 (KL: 0.0236) | Train - Val Loss Diff : 0.0213 | Epoch Time: 10.53s | Total Time: 84.50s
+Epoch 9/150 | Train Loss: 0.1068 (KL: 0.0199) | Val Loss: 0.0881 (KL: 0.0249) | Train - Val Loss Diff : 0.0188 | Epoch Time: 10.54s | Total Time: 95.04s
+Epoch 10/150 | Train Loss: 0.1057 (KL: 0.0189) | Val Loss: 0.0842 (KL: 0.0165) | Train - Val Loss Diff : 0.0215 | Epoch Time: 10.52s | Total Time: 105.56s
+Epoch 11/150 | Train Loss: 0.1048 (KL: 0.0182) | Val Loss: 0.0829 (KL: 0.0140) | Train - Val Loss Diff : 0.0220 | Epoch Time: 10.51s | Total Time: 116.07s
+Epoch 12/150 | Train Loss: 0.1041 (KL: 0.0175) | Val Loss: 0.0823 (KL: 0.0130) | Train - Val Loss Diff : 0.0218 | Epoch Time: 10.50s | Total Time: 126.58s
+Epoch 13/150 | Train Loss: 0.1035 (KL: 0.0168) | Val Loss: 0.0843 (KL: 0.0149) | Train - Val Loss Diff : 0.0192 | Epoch Time: 10.53s | Total Time: 137.10s
+Epoch 14/150 | Train Loss: 0.1033 (KL: 0.0165) | Val Loss: 0.0811 (KL: 0.0164) | Train - Val Loss Diff : 0.0221 | Epoch Time: 10.54s | Total Time: 147.64s
+Epoch 15/150 | Train Loss: 0.1028 (KL: 0.0160) | Val Loss: 0.0837 (KL: 0.0153) | Train - Val Loss Diff : 0.0191 | Epoch Time: 10.58s | Total Time: 158.22s
+Epoch 16/150 | Train Loss: 0.1026 (KL: 0.0161) | Val Loss: 0.0817 (KL: 0.0151) | Train - Val Loss Diff : 0.0209 | Epoch Time: 10.51s | Total Time: 168.73s
+Epoch 17/150 | Train Loss: 0.1020 (KL: 0.0158) | Val Loss: 0.0816 (KL: 0.0164) | Train - Val Loss Diff : 0.0204 | Epoch Time: 10.52s | Total Time: 179.25s
+Epoch 18/150 | Train Loss: 0.1019 (KL: 0.0159) | Val Loss: 0.0840 (KL: 0.0108) | Train - Val Loss Diff : 0.0179 | Epoch Time: 10.52s | Total Time: 189.77s
+Epoch 19/150 | Train Loss: 0.1015 (KL: 0.0158) | Val Loss: 0.0820 (KL: 0.0129) | Train - Val Loss Diff : 0.0195 | Epoch Time: 10.53s | Total Time: 200.30s
+Epoch 20/150 | Train Loss: 0.1013 (KL: 0.0157) | Val Loss: 0.0842 (KL: 0.0123) | Train - Val Loss Diff : 0.0172 | Epoch Time: 10.53s | Total Time: 210.83s
+Epoch 21/150 | Train Loss: 0.0979 (KL: 0.0144) | Val Loss: 0.0772 (KL: 0.0110) | Train - Val Loss Diff : 0.0207 | Epoch Time: 10.54s | Total Time: 221.37s
+Epoch 22/150 | Train Loss: 0.0976 (KL: 0.0144) | Val Loss: 0.0765 (KL: 0.0135) | Train - Val Loss Diff : 0.0211 | Epoch Time: 10.52s | Total Time: 231.89s
+Epoch 23/150 | Train Loss: 0.0973 (KL: 0.0143) | Val Loss: 0.0774 (KL: 0.0156) | Train - Val Loss Diff : 0.0199 | Epoch Time: 10.53s | Total Time: 242.41s
+Epoch 24/150 | Train Loss: 0.0972 (KL: 0.0142) | Val Loss: 0.0763 (KL: 0.0145) | Train - Val Loss Diff : 0.0209 | Epoch Time: 10.51s | Total Time: 252.93s
+Epoch 25/150 | Train Loss: 0.0970 (KL: 0.0142) | Val Loss: 0.0769 (KL: 0.0154) | Train - Val Loss Diff : 0.0201 | Epoch Time: 10.53s | Total Time: 263.46s
+Epoch 26/150 | Train Loss: 0.0968 (KL: 0.0142) | Val Loss: 0.0771 (KL: 0.0125) | Train - Val Loss Diff : 0.0197 | Epoch Time: 10.54s | Total Time: 274.00s
+Epoch 27/150 | Train Loss: 0.0967 (KL: 0.0142) | Val Loss: 0.0767 (KL: 0.0147) | Train - Val Loss Diff : 0.0200 | Epoch Time: 10.52s | Total Time: 284.52s
+Epoch 28/150 | Train Loss: 0.0964 (KL: 0.0141) | Val Loss: 0.0759 (KL: 0.0115) | Train - Val Loss Diff : 0.0205 | Epoch Time: 10.51s | Total Time: 295.03s
+Epoch 29/150 | Train Loss: 0.0963 (KL: 0.0141) | Val Loss: 0.0764 (KL: 0.0132) | Train - Val Loss Diff : 0.0199 | Epoch Time: 10.52s | Total Time: 305.55s
+Epoch 30/150 | Train Loss: 0.0962 (KL: 0.0141) | Val Loss: 0.0756 (KL: 0.0119) | Train - Val Loss Diff : 0.0206 | Epoch Time: 10.52s | Total Time: 316.07s
+Epoch 31/150 | Train Loss: 0.0960 (KL: 0.0141) | Val Loss: 0.0758 (KL: 0.0108) | Train - Val Loss Diff : 0.0203 | Epoch Time: 10.54s | Total Time: 326.60s
+Epoch 32/150 | Train Loss: 0.0959 (KL: 0.0141) | Val Loss: 0.0763 (KL: 0.0124) | Train - Val Loss Diff : 0.0196 | Epoch Time: 10.52s | Total Time: 337.13s
+Epoch 33/150 | Train Loss: 0.0959 (KL: 0.0141) | Val Loss: 0.0754 (KL: 0.0132) | Train - Val Loss Diff : 0.0204 | Epoch Time: 10.52s | Total Time: 347.64s
+Epoch 34/150 | Train Loss: 0.0957 (KL: 0.0140) | Val Loss: 0.0766 (KL: 0.0123) | Train - Val Loss Diff : 0.0191 | Epoch Time: 10.51s | Total Time: 358.15s
+Epoch 35/150 | Train Loss: 0.0956 (KL: 0.0140) | Val Loss: 0.0751 (KL: 0.0113) | Train - Val Loss Diff : 0.0205 | Epoch Time: 10.51s | Total Time: 368.66s
+Epoch 36/150 | Train Loss: 0.0955 (KL: 0.0140) | Val Loss: 0.0759 (KL: 0.0120) | Train - Val Loss Diff : 0.0196 | Epoch Time: 10.54s | Total Time: 379.20s
+Epoch 37/150 | Train Loss: 0.0954 (KL: 0.0139) | Val Loss: 0.0752 (KL: 0.0129) | Train - Val Loss Diff : 0.0202 | Epoch Time: 10.53s | Total Time: 389.73s
+Epoch 38/150 | Train Loss: 0.0952 (KL: 0.0139) | Val Loss: 0.0749 (KL: 0.0121) | Train - Val Loss Diff : 0.0203 | Epoch Time: 10.53s | Total Time: 400.26s
+Epoch 39/150 | Train Loss: 0.0951 (KL: 0.0139) | Val Loss: 0.0764 (KL: 0.0102) | Train - Val Loss Diff : 0.0188 | Epoch Time: 10.53s | Total Time: 410.79s
+Epoch 40/150 | Train Loss: 0.0952 (KL: 0.0140) | Val Loss: 0.0766 (KL: 0.0113) | Train - Val Loss Diff : 0.0186 | Epoch Time: 10.53s | Total Time: 421.32s
+Epoch 41/150 | Train Loss: 0.0950 (KL: 0.0140) | Val Loss: 0.0754 (KL: 0.0144) | Train - Val Loss Diff : 0.0197 | Epoch Time: 10.54s | Total Time: 431.86s
+Epoch 42/150 | Train Loss: 0.0949 (KL: 0.0139) | Val Loss: 0.0757 (KL: 0.0128) | Train - Val Loss Diff : 0.0192 | Epoch Time: 10.54s | Total Time: 442.39s
+Epoch 43/150 | Train Loss: 0.0948 (KL: 0.0138) | Val Loss: 0.0746 (KL: 0.0122) | Train - Val Loss Diff : 0.0202 | Epoch Time: 10.54s | Total Time: 452.94s
+Epoch 44/150 | Train Loss: 0.0948 (KL: 0.0138) | Val Loss: 0.0744 (KL: 0.0131) | Train - Val Loss Diff : 0.0204 | Epoch Time: 10.53s | Total Time: 463.46s
+Epoch 45/150 | Train Loss: 0.0947 (KL: 0.0138) | Val Loss: 0.0755 (KL: 0.0132) | Train - Val Loss Diff : 0.0192 | Epoch Time: 10.51s | Total Time: 473.97s
+Epoch 46/150 | Train Loss: 0.0946 (KL: 0.0139) | Val Loss: 0.0751 (KL: 0.0125) | Train - Val Loss Diff : 0.0195 | Epoch Time: 10.52s | Total Time: 484.49s
+Epoch 47/150 | Train Loss: 0.0945 (KL: 0.0137) | Val Loss: 0.0744 (KL: 0.0106) | Train - Val Loss Diff : 0.0201 | Epoch Time: 10.52s | Total Time: 495.01s
+Epoch 48/150 | Train Loss: 0.0945 (KL: 0.0138) | Val Loss: 0.0751 (KL: 0.0106) | Train - Val Loss Diff : 0.0194 | Epoch Time: 10.53s | Total Time: 505.54s
+Epoch 49/150 | Train Loss: 0.0945 (KL: 0.0138) | Val Loss: 0.0754 (KL: 0.0135) | Train - Val Loss Diff : 0.0191 | Epoch Time: 10.53s | Total Time: 516.07s
+Epoch 50/150 | Train Loss: 0.0944 (KL: 0.0138) | Val Loss: 0.0751 (KL: 0.0113) | Train - Val Loss Diff : 0.0193 | Epoch Time: 10.56s | Total Time: 526.63s
+Epoch 51/150 | Train Loss: 0.0943 (KL: 0.0137) | Val Loss: 0.0744 (KL: 0.0117) | Train - Val Loss Diff : 0.0199 | Epoch Time: 10.50s | Total Time: 537.13s
+Epoch 52/150 | Train Loss: 0.0942 (KL: 0.0138) | Val Loss: 0.0757 (KL: 0.0131) | Train - Val Loss Diff : 0.0185 | Epoch Time: 10.53s | Total Time: 547.66s
+Epoch 53/150 | Train Loss: 0.0942 (KL: 0.0138) | Val Loss: 0.0745 (KL: 0.0136) | Train - Val Loss Diff : 0.0197 | Epoch Time: 10.51s | Total Time: 558.17s
+Epoch 54/150 | Train Loss: 0.0921 (KL: 0.0129) | Val Loss: 0.0724 (KL: 0.0137) | Train - Val Loss Diff : 0.0197 | Epoch Time: 10.52s | Total Time: 568.69s
+Epoch 55/150 | Train Loss: 0.0919 (KL: 0.0129) | Val Loss: 0.0721 (KL: 0.0120) | Train - Val Loss Diff : 0.0198 | Epoch Time: 10.53s | Total Time: 579.22s
+Epoch 56/150 | Train Loss: 0.0919 (KL: 0.0130) | Val Loss: 0.0729 (KL: 0.0131) | Train - Val Loss Diff : 0.0189 | Epoch Time: 10.51s | Total Time: 589.73s
+Epoch 57/150 | Train Loss: 0.0918 (KL: 0.0130) | Val Loss: 0.0718 (KL: 0.0104) | Train - Val Loss Diff : 0.0200 | Epoch Time: 10.53s | Total Time: 600.26s
+Epoch 58/150 | Train Loss: 0.0918 (KL: 0.0130) | Val Loss: 0.0722 (KL: 0.0125) | Train - Val Loss Diff : 0.0196 | Epoch Time: 10.52s | Total Time: 610.78s
+Epoch 59/150 | Train Loss: 0.0916 (KL: 0.0129) | Val Loss: 0.0724 (KL: 0.0108) | Train - Val Loss Diff : 0.0192 | Epoch Time: 10.53s | Total Time: 621.31s
+Epoch 60/150 | Train Loss: 0.0917 (KL: 0.0130) | Val Loss: 0.0721 (KL: 0.0112) | Train - Val Loss Diff : 0.0196 | Epoch Time: 10.54s | Total Time: 631.86s
+Epoch 61/150 | Train Loss: 0.0916 (KL: 0.0129) | Val Loss: 0.0726 (KL: 0.0136) | Train - Val Loss Diff : 0.0190 | Epoch Time: 10.53s | Total Time: 642.39s
+Epoch 62/150 | Train Loss: 0.0915 (KL: 0.0128) | Val Loss: 0.0723 (KL: 0.0119) | Train - Val Loss Diff : 0.0192 | Epoch Time: 10.51s | Total Time: 652.91s
+Epoch 63/150 | Train Loss: 0.0915 (KL: 0.0129) | Val Loss: 0.0730 (KL: 0.0116) | Train - Val Loss Diff : 0.0185 | Epoch Time: 10.51s | Total Time: 663.42s
+Epoch 64/150 | Train Loss: 0.0903 (KL: 0.0125) | Val Loss: 0.0718 (KL: 0.0137) | Train - Val Loss Diff : 0.0186 | Epoch Time: 10.51s | Total Time: 673.93s
+Epoch 65/150 | Train Loss: 0.0902 (KL: 0.0125) | Val Loss: 0.0708 (KL: 0.0124) | Train - Val Loss Diff : 0.0194 | Epoch Time: 10.50s | Total Time: 684.43s
+Epoch 66/150 | Train Loss: 0.0901 (KL: 0.0124) | Val Loss: 0.0713 (KL: 0.0127) | Train - Val Loss Diff : 0.0189 | Epoch Time: 10.54s | Total Time: 694.97s
+Epoch 67/150 | Train Loss: 0.0901 (KL: 0.0125) | Val Loss: 0.0712 (KL: 0.0118) | Train - Val Loss Diff : 0.0189 | Epoch Time: 10.52s | Total Time: 705.49s
+Epoch 68/150 | Train Loss: 0.0900 (KL: 0.0125) | Val Loss: 0.0711 (KL: 0.0116) | Train - Val Loss Diff : 0.0189 | Epoch Time: 10.51s | Total Time: 716.01s
+Epoch 69/150 | Train Loss: 0.0900 (KL: 0.0124) | Val Loss: 0.0712 (KL: 0.0126) | Train - Val Loss Diff : 0.0188 | Epoch Time: 10.51s | Total Time: 726.52s
+Epoch 70/150 | Train Loss: 0.0899 (KL: 0.0124) | Val Loss: 0.0712 (KL: 0.0130) | Train - Val Loss Diff : 0.0187 | Epoch Time: 10.50s | Total Time: 737.02s
+Epoch 71/150 | Train Loss: 0.0900 (KL: 0.0124) | Val Loss: 0.0710 (KL: 0.0125) | Train - Val Loss Diff : 0.0190 | Epoch Time: 10.51s | Total Time: 747.53s
+Epoch 72/150 | Train Loss: 0.0893 (KL: 0.0122) | Val Loss: 0.0702 (KL: 0.0115) | Train - Val Loss Diff : 0.0191 | Epoch Time: 10.54s | Total Time: 758.07s
+Epoch 73/150 | Train Loss: 0.0892 (KL: 0.0122) | Val Loss: 0.0703 (KL: 0.0119) | Train - Val Loss Diff : 0.0189 | Epoch Time: 10.54s | Total Time: 768.61s
+Epoch 74/150 | Train Loss: 0.0892 (KL: 0.0122) | Val Loss: 0.0706 (KL: 0.0118) | Train - Val Loss Diff : 0.0186 | Epoch Time: 10.52s | Total Time: 779.13s
+Epoch 75/150 | Train Loss: 0.0892 (KL: 0.0122) | Val Loss: 0.0703 (KL: 0.0111) | Train - Val Loss Diff : 0.0189 | Epoch Time: 10.51s | Total Time: 789.63s
+Epoch 76/150 | Train Loss: 0.0892 (KL: 0.0121) | Val Loss: 0.0704 (KL: 0.0119) | Train - Val Loss Diff : 0.0188 | Epoch Time: 10.53s | Total Time: 800.16s
+Epoch 77/150 | Train Loss: 0.0891 (KL: 0.0121) | Val Loss: 0.0707 (KL: 0.0121) | Train - Val Loss Diff : 0.0184 | Epoch Time: 10.53s | Total Time: 810.69s
+Epoch 78/150 | Train Loss: 0.0891 (KL: 0.0121) | Val Loss: 0.0707 (KL: 0.0116) | Train - Val Loss Diff : 0.0184 | Epoch Time: 10.52s | Total Time: 821.22s
+Epoch 79/150 | Train Loss: 0.0887 (KL: 0.0120) | Val Loss: 0.0702 (KL: 0.0119) | Train - Val Loss Diff : 0.0186 | Epoch Time: 10.54s | Total Time: 831.76s
+Epoch 80/150 | Train Loss: 0.0887 (KL: 0.0121) | Val Loss: 0.0704 (KL: 0.0123) | Train - Val Loss Diff : 0.0183 | Epoch Time: 10.52s | Total Time: 842.28s
+Epoch 81/150 | Train Loss: 0.0887 (KL: 0.0121) | Val Loss: 0.0701 (KL: 0.0121) | Train - Val Loss Diff : 0.0186 | Epoch Time: 10.53s | Total Time: 852.81s
+Epoch 82/150 | Train Loss: 0.0887 (KL: 0.0120) | Val Loss: 0.0700 (KL: 0.0120) | Train - Val Loss Diff : 0.0188 | Epoch Time: 10.52s | Total Time: 863.33s
+Epoch 83/150 | Train Loss: 0.0887 (KL: 0.0120) | Val Loss: 0.0703 (KL: 0.0127) | Train - Val Loss Diff : 0.0184 | Epoch Time: 10.53s | Total Time: 873.85s
+Epoch 84/150 | Train Loss: 0.0887 (KL: 0.0121) | Val Loss: 0.0702 (KL: 0.0119) | Train - Val Loss Diff : 0.0185 | Epoch Time: 10.53s | Total Time: 884.38s
+Epoch 85/150 | Train Loss: 0.0886 (KL: 0.0120) | Val Loss: 0.0699 (KL: 0.0116) | Train - Val Loss Diff : 0.0187 | Epoch Time: 10.52s | Total Time: 894.91s
+Epoch 86/150 | Train Loss: 0.0886 (KL: 0.0119) | Val Loss: 0.0703 (KL: 0.0125) | Train - Val Loss Diff : 0.0183 | Epoch Time: 10.55s | Total Time: 905.46s
+Epoch 87/150 | Train Loss: 0.0886 (KL: 0.0120) | Val Loss: 0.0701 (KL: 0.0120) | Train - Val Loss Diff : 0.0186 | Epoch Time: 10.51s | Total Time: 915.97s
+Epoch 88/150 | Train Loss: 0.0887 (KL: 0.0120) | Val Loss: 0.0701 (KL: 0.0123) | Train - Val Loss Diff : 0.0186 | Epoch Time: 10.50s | Total Time: 926.47s
+Epoch 89/150 | Train Loss: 0.0886 (KL: 0.0119) | Val Loss: 0.0702 (KL: 0.0123) | Train - Val Loss Diff : 0.0184 | Epoch Time: 10.52s | Total Time: 936.99s
+Epoch 90/150 | Train Loss: 0.0886 (KL: 0.0120) | Val Loss: 0.0703 (KL: 0.0123) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.55s | Total Time: 947.54s
+Epoch 91/150 | Train Loss: 0.0886 (KL: 0.0120) | Val Loss: 0.0701 (KL: 0.0120) | Train - Val Loss Diff : 0.0184 | Epoch Time: 10.53s | Total Time: 958.07s
+Epoch 92/150 | Train Loss: 0.0884 (KL: 0.0119) | Val Loss: 0.0700 (KL: 0.0116) | Train - Val Loss Diff : 0.0184 | Epoch Time: 10.53s | Total Time: 968.60s
+Epoch 93/150 | Train Loss: 0.0884 (KL: 0.0119) | Val Loss: 0.0700 (KL: 0.0118) | Train - Val Loss Diff : 0.0184 | Epoch Time: 10.51s | Total Time: 979.11s
+Epoch 94/150 | Train Loss: 0.0884 (KL: 0.0120) | Val Loss: 0.0701 (KL: 0.0121) | Train - Val Loss Diff : 0.0183 | Epoch Time: 13.53s | Total Time: 992.64s
+Epoch 95/150 | Train Loss: 0.0883 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0184 | Epoch Time: 16.59s | Total Time: 1009.23s
+Epoch 96/150 | Train Loss: 0.0883 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0115) | Train - Val Loss Diff : 0.0185 | Epoch Time: 14.01s | Total Time: 1023.25s
+Epoch 97/150 | Train Loss: 0.0883 (KL: 0.0119) | Val Loss: 0.0700 (KL: 0.0118) | Train - Val Loss Diff : 0.0184 | Epoch Time: 13.53s | Total Time: 1036.77s
+Epoch 98/150 | Train Loss: 0.0884 (KL: 0.0119) | Val Loss: 0.0701 (KL: 0.0118) | Train - Val Loss Diff : 0.0183 | Epoch Time: 15.76s | Total Time: 1052.53s
+Epoch 99/150 | Train Loss: 0.0884 (KL: 0.0120) | Val Loss: 0.0699 (KL: 0.0113) | Train - Val Loss Diff : 0.0185 | Epoch Time: 10.52s | Total Time: 1063.05s
+Epoch 100/150 | Train Loss: 0.0883 (KL: 0.0119) | Val Loss: 0.0701 (KL: 0.0120) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.52s | Total Time: 1073.58s
+Epoch 101/150 | Train Loss: 0.0883 (KL: 0.0119) | Val Loss: 0.0703 (KL: 0.0121) | Train - Val Loss Diff : 0.0180 | Epoch Time: 10.64s | Total Time: 1084.22s
+Epoch 102/150 | Train Loss: 0.0883 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0184 | Epoch Time: 10.52s | Total Time: 1094.74s
+Epoch 103/150 | Train Loss: 0.0883 (KL: 0.0119) | Val Loss: 0.0698 (KL: 0.0116) | Train - Val Loss Diff : 0.0185 | Epoch Time: 10.69s | Total Time: 1105.42s
+Epoch 104/150 | Train Loss: 0.0882 (KL: 0.0119) | Val Loss: 0.0698 (KL: 0.0118) | Train - Val Loss Diff : 0.0183 | Epoch Time: 10.52s | Total Time: 1115.94s
+Epoch 105/150 | Train Loss: 0.0882 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0117) | Train - Val Loss Diff : 0.0183 | Epoch Time: 10.51s | Total Time: 1126.45s
+Epoch 106/150 | Train Loss: 0.0882 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0118) | Train - Val Loss Diff : 0.0183 | Epoch Time: 10.55s | Total Time: 1137.00s
+Epoch 107/150 | Train Loss: 0.0882 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0118) | Train - Val Loss Diff : 0.0184 | Epoch Time: 10.53s | Total Time: 1147.52s
+Epoch 108/150 | Train Loss: 0.0882 (KL: 0.0118) | Val Loss: 0.0700 (KL: 0.0116) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.51s | Total Time: 1158.04s
+Epoch 109/150 | Train Loss: 0.0883 (KL: 0.0119) | Val Loss: 0.0700 (KL: 0.0120) | Train - Val Loss Diff : 0.0183 | Epoch Time: 10.53s | Total Time: 1168.56s
+Epoch 110/150 | Train Loss: 0.0881 (KL: 0.0117) | Val Loss: 0.0700 (KL: 0.0123) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.52s | Total Time: 1179.09s
+Epoch 111/150 | Train Loss: 0.0882 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0118) | Train - Val Loss Diff : 0.0183 | Epoch Time: 10.53s | Total Time: 1189.61s
+Epoch 112/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.54s | Total Time: 1200.15s
+Epoch 113/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0700 (KL: 0.0120) | Train - Val Loss Diff : 0.0181 | Epoch Time: 10.56s | Total Time: 1210.71s
+Epoch 114/150 | Train Loss: 0.0882 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0183 | Epoch Time: 10.53s | Total Time: 1221.25s
+Epoch 115/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0698 (KL: 0.0118) | Train - Val Loss Diff : 0.0183 | Epoch Time: 10.51s | Total Time: 1231.76s
+Epoch 116/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0700 (KL: 0.0122) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.52s | Total Time: 1242.28s
+Epoch 117/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0698 (KL: 0.0118) | Train - Val Loss Diff : 0.0183 | Epoch Time: 10.52s | Total Time: 1252.79s
+Epoch 118/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0120) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.54s | Total Time: 1263.34s
+Epoch 119/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0698 (KL: 0.0118) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.54s | Total Time: 1273.87s
+Epoch 120/150 | Train Loss: 0.0881 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0120) | Train - Val Loss Diff : 0.0183 | Epoch Time: 10.52s | Total Time: 1284.39s
+Epoch 121/150 | Train Loss: 0.0881 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0118) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.53s | Total Time: 1294.92s
+Epoch 122/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0698 (KL: 0.0118) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.54s | Total Time: 1305.46s
+Epoch 123/150 | Train Loss: 0.0881 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0118) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.52s | Total Time: 1315.98s
+Epoch 124/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.54s | Total Time: 1326.51s
+Epoch 125/150 | Train Loss: 0.0881 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0117) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.54s | Total Time: 1337.05s
+Epoch 126/150 | Train Loss: 0.0880 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.53s | Total Time: 1347.58s
+Epoch 127/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.52s | Total Time: 1358.09s
+Epoch 128/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.50s | Total Time: 1368.60s
+Epoch 129/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0120) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.51s | Total Time: 1379.11s
+Epoch 130/150 | Train Loss: 0.0881 (KL: 0.0119) | Val Loss: 0.0698 (KL: 0.0118) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.52s | Total Time: 1389.63s
+Epoch 131/150 | Train Loss: 0.0880 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.56s | Total Time: 1400.19s
+Epoch 132/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.52s | Total Time: 1410.71s
+Epoch 133/150 | Train Loss: 0.0880 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.50s | Total Time: 1421.21s
+Epoch 134/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.51s | Total Time: 1431.72s
+Epoch 135/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.51s | Total Time: 1442.24s
+Epoch 136/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.54s | Total Time: 1452.77s
+Epoch 137/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.53s | Total Time: 1463.30s
+Epoch 138/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.53s | Total Time: 1473.83s
+Epoch 139/150 | Train Loss: 0.0881 (KL: 0.0119) | Val Loss: 0.0698 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.53s | Total Time: 1484.36s
+Epoch 140/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0118) | Train - Val Loss Diff : 0.0183 | Epoch Time: 10.50s | Total Time: 1494.86s
+Epoch 141/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.52s | Total Time: 1505.38s
+Epoch 142/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0120) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.53s | Total Time: 1515.92s
+Epoch 143/150 | Train Loss: 0.0881 (KL: 0.0119) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.51s | Total Time: 1526.43s
+Epoch 144/150 | Train Loss: 0.0880 (KL: 0.0117) | Val Loss: 0.0698 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.52s | Total Time: 1536.95s
+Epoch 145/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.50s | Total Time: 1547.45s
+Epoch 146/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.51s | Total Time: 1557.96s
+Epoch 147/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.53s | Total Time: 1568.49s
+Epoch 148/150 | Train Loss: 0.0880 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.53s | Total Time: 1579.02s
+Epoch 149/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.53s | Total Time: 1589.55s
+Epoch 150/150 | Train Loss: 0.0881 (KL: 0.0118) | Val Loss: 0.0699 (KL: 0.0119) | Train - Val Loss Diff : 0.0182 | Epoch Time: 10.52s | Total Time: 1600.07s
+
+
+============================================================
+TARGET FEATURE METRICS
+============================================================
+top_px: MSE=2173.8118, R²=0.8578, MAE = 33.7865
+
+top_py: MSE=2153.4028, R²=0.8583, MAE = 33.7871
+
+top_pz: MSE=12747.5795, R²=0.8984, MAE = 76.1800
+
+antitop_px: MSE=2175.8893, R²=0.8577, MAE = 33.7626
+
+antitop_py: MSE=2157.5244, R²=0.8577, MAE = 33.8176
+
+antitop_pz: MSE=12546.4391, R²=0.8993, MAE = 75.8032
+
+top_E: MSE=9716.9524, R²=0.7820, MAE = 59.8650
+
+antitop_E: MSE=9520.7697, R²=0.7851, MAE = 59.4676
+
+============================================================
+top_px: KL = 0.0124 ± 0.0001
+top_py: KL = 0.0051 ± 0.0001
+top_pz: KL = 0.0051 ± 0.0001
+antitop_px: KL = 0.0125 ± 0.0001
+antitop_py: KL = 0.0050 ± 0.0001
+antitop_pz: KL = 0.0056 ± 0.0001
+top_E: KL = 0.0516 ± 0.0001
+antitop_E: KL = 0.0567 ± 0.0001
+============================================================
+
+============================================================
+INVARIANT MASS METRICS
+============================================================
+MSE:  8303.1211
+RMSE: 91.1215 GeV
+MAE:  59.7981 GeV
+R²:   0.7519
+ttbar_mass: KL = 0.1045 ± 0.0001
+============================================================
