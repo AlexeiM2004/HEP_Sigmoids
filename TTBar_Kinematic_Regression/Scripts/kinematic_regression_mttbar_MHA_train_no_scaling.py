@@ -4,7 +4,7 @@
 # Loads prepared and preprocessed data from 4 separate files (train,test,val,scaler)
 # Converts X and target into tensors using a custom dataset
 # Employs dataloaders for batching, with num workers = 4
-# Defines MLA transformer model architecture with attention pooling
+# Defines MHA transformer model architecture with attention pooling
 # Defines an early stopping mechanism
 # Defines loss function (Huber loss), optimiser (Wadam) and scheduler (reduceLRonplateu)
 # Runs training loop
@@ -13,7 +13,7 @@
 
 ### ------------------------------ Imports ------------------------------ ###
 
-import matplotlib.pyplot as plt # Used to plot graphs 
+import matplotlib.pyplot as plt 
 import os
 import numpy as np
 import torch
@@ -21,8 +21,13 @@ import h5py
 import time
 import vector
 import awkward as ak
-
 from datetime import datetime
+from torch.utils.data import Dataset
+from torch.utils.data import TensorDataset, DataLoader
+import torch.nn as nn
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from dataclasses import dataclass, field
 
 ### ------------------------------ Print Current Timestamp ------------------------------ ###
 
@@ -35,9 +40,89 @@ print("Job started at :", formatted_time)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device with number of GPUs: {torch.cuda.device_count()}")
 
-### ------------------------------ Load Preprocessed Data ------------------------------ ###
+### ------------------------------ Control Panels ------------------------------ ###
 
-from torch.utils.data import Dataset
+@dataclass
+class Data_Configuration:
+    train_file : str = "kinematic_features_train.h5"
+    val_file : str = "kinematic_features_val.h5"
+    test_file : str = "kinematic_features_test.h5"
+    scaler_file : str = "kinematic_features_scaler.h5"
+    batch_size : int = 4096
+    num_workers : int = 4
+    pin_memory : bool = True
+
+@dataclass
+class Model_Configuration:
+    d_model : int = 64
+    nhead : int = 4
+    num_layers : int = 4
+    dropout : float = 0.1 
+
+@dataclass
+class Training_Configuration:
+    # Early stopping mechanism
+    patience : int = 10
+    min_delta : float = 0.0
+    min_early_stop : int = 150
+
+    # Training hyperparameters
+    num_epochs : int = 150
+    learning_rate : float = 0.005
+    weight_decay : float = 0.01
+
+    # KL divergence settings
+    kl_weight_max: float = 0.1
+    kl_ramp_epochs: int = 15
+    kl_bins: int = 100
+    kl_sigma: float = 0.20
+    kl_eps: float = 1e-8
+    
+    # Mass loss settings
+    mass_loss_weight: float = 0.0001
+
+
+    # Scheduler settings
+    scheduler_factor: float = 0.5
+    scheduler_patience: int = 5
+    scheduler_min_lr: float = 1e-6
+
+@dataclass
+class Data_Saving:
+    loss_r2_summary_plots : str = "MHA_train_no_scaling_loss_r2_summary_plots.png"
+    target_feature_plots : str = "MHA_train_no_scaling_target_feature_plots.png"
+    target_dimension_scatter_plots : str = "MHA_train_no_scaling_target_dimension_scatter_plots.png"
+    invariant_mass_plots : str = "MHA_train_no_scaling_invariant_mass_plots.png"
+    invariant_mass_data : str = "MHA_train_no_scaling_invariant_mass_data.txt"
+
+@dataclass
+class Main_Configuration:
+    data_config: Data_Configuration = field(default_factory=Data_Configuration)
+    model_config: Model_Configuration = field(default_factory=Model_Configuration)
+    train_config: Training_Configuration = field(default_factory=Training_Configuration)
+    data_saving: Data_Saving = field(default_factory=Data_Saving)
+
+control_panel = Main_Configuration()
+
+def display_config(control_panel):
+    print("\n" + "="*60)
+    print("CONTROL PANEL")
+    print("="*60)
+    
+    sections = {
+        'Data': control_panel.data_config,
+        'Model': control_panel.model_config,
+        'Training': control_panel.train_config
+    }
+    
+    for section_name, section in sections.items():
+        print(f"\n{section_name.upper()} CONFIGURATION")
+        for key, value in section.__dict__.items():
+            print(f"  {key}: {value}")
+
+display_config(control_panel)
+
+### ------------------------------ Load Preprocessed Data ------------------------------ ###
 
 class CustomDataset(Dataset):
     def __init__(self, file_path):
@@ -52,45 +137,31 @@ class CustomDataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.Y[idx], self.M[idx]
 
-# ------------------------------ DataLoaders ------------------------------ #
+# ------------------------------ Data Loaders ------------------------------ #
 
-from torch.utils.data import TensorDataset, DataLoader
+def create_loader(split):
+    file_map = {
+        'train': control_panel.data_config.train_file,
+        'val': control_panel.data_config.val_file,
+        'test': control_panel.data_config.test_file
+    }
+    
+    dataset = CustomDataset(file_map[split])
+    
+    return DataLoader(
+        dataset,
+        batch_size=control_panel.data_config.batch_size,
+        shuffle=(split == 'train'),
+        num_workers=control_panel.data_config.num_workers,
+        pin_memory=control_panel.data_config.pin_memory
+    )
 
-batch_size = 4096
+train_loader, val_loader, test_loader = [create_loader(s) for s in ['train', 'val', 'test']]
 
-dataset_train = CustomDataset("kinematic_features_train.h5")
-dataset_val = CustomDataset("kinematic_features_val.h5")
-dataset_test = CustomDataset("kinematic_features_test.h5")
 
-train_loader = DataLoader(
-    dataset_train, 
-    batch_size=batch_size, 
-    shuffle=True,
-    num_workers=4,
-    pin_memory=True)
+### ------------------------------ Model Architecture ------------------------------ ###
 
-val_loader = DataLoader(
-    dataset_val, 
-    batch_size=batch_size, 
-    shuffle=False,
-    num_workers=4,
-    pin_memory=True
-)
-test_loader = DataLoader(
-    dataset_test, 
-    batch_size=batch_size, 
-    shuffle=False,
-    num_workers=4,
-    pin_memory=True
-)
-
-### ------------------------------ Transformer Model Architecture with MHA ------------------------------ ###
-import torch.nn as nn
-import torch.nn.functional as F
-
-dropout_rate = 0.02
-
-import torch.nn as nn
+# Define attention pooling mechanism 
 
 class AttentionPooling(nn.Module):
     def __init__(self, d_model):
@@ -181,17 +252,19 @@ class Transformer(nn.Module):
         
         return self.classifier(pooled)
 
-model = Transformer(d_model=64,nhead=4,num_layers=8,dropout=0.1).to(device)
-
-print(model)
-print(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
+model = Transformer(
+    d_model=control_panel.model_config.d_model,
+    nhead=control_panel.model_config.nhead,
+    num_layers=control_panel.model_config.num_layers,
+    dropout=control_panel.model_config.dropout
+    ).to(device)
 
 ### ------------------------------ Early stopping mechanism ------------------------------ ###
 
 class EarlyStopping:
-    def __init__(self, patience=10, min_delta=0):
-        self.patience = patience        # How many epochs to wait
-        self.min_delta = min_delta      # Minimum improvement to count
+    def __init__(self):
+        self.patience = control_panel.train_config.patience # Number of epochs to wait
+        self.min_delta = control_panel.train_config.min_delta # Minimum change
         self.counter = 0
         self.best_loss = float('inf')
         self.early_stop = False
@@ -199,7 +272,7 @@ class EarlyStopping:
     def __call__(self, avg_val_loss):
         if self.best_loss - avg_val_loss > self.min_delta:
             self.best_loss = avg_val_loss
-            self.counter = 0  # Reset counter if improvement
+            self.counter = 0 
         else:
             self.counter += 1
             if self.counter >= self.patience:
@@ -209,13 +282,15 @@ early_stopping = EarlyStopping()
 
 ### ------------------------------ KL Divergence loss function ------------------------------ ###
 
-def distribution_considering_loss(pred, target, bins, hist_min, hist_max, sigma=0.20, eps=1e-8):
+def distribution_considering_loss(pred, target, bins, hist_min, hist_max):
+        # Reshape target matrix
         target_dim = pred.shape[1]
         if isinstance(hist_min, (float, int)):
             hist_min = pred.new_tensor([hist_min] * target_dim)
         if isinstance(hist_max, (float, int)):
             hist_max = pred.new_tensor([hist_max] * target_dim)
 
+        # Define max and min histogram
         hist_min = hist_min.to(device=pred.device, dtype=pred.dtype).reshape(-1)
         hist_max = hist_max.to(device=pred.device, dtype=pred.dtype).reshape(-1)
 
@@ -229,11 +304,13 @@ def distribution_considering_loss(pred, target, bins, hist_min, hist_max, sigma=
                 device=pred.device, dtype=pred.dtype
             )
 
-            pred_kernel = torch.exp(-0.5 * ((pred_dim.unsqueeze(1) - centers.unsqueeze(0)) / sigma) ** 2)
-            target_kernel = torch.exp(-0.5 * ((target_dim_values.unsqueeze(1) - centers.unsqueeze(0)) / sigma) ** 2)
+            # Define Gaussian kernels
+            pred_kernel = torch.exp(-0.5 * ((pred_dim.unsqueeze(1) - centers.unsqueeze(0)) / control_panel.train_config.kl_sigma) ** 2)
+            target_kernel = torch.exp(-0.5 * ((target_dim_values.unsqueeze(1) - centers.unsqueeze(0)) / control_panel.train_config.kl_sigma) ** 2)
 
-            pred_hist = pred_kernel.mean(dim=0) + eps
-            target_hist = target_kernel.mean(dim=0) + eps
+
+            pred_hist = pred_kernel.mean(dim=0) + control_panel.train_config.kl_eps
+            target_hist = target_kernel.mean(dim=0) + control_panel.train_config.kl_eps
 
             pred_hist = pred_hist / pred_hist.sum()
             target_hist = target_hist / target_hist.sum()
@@ -244,37 +321,28 @@ def distribution_considering_loss(pred, target, bins, hist_min, hist_max, sigma=
 
 ### ------------------------------ Define loss func, optimiser, and scheduler ------------------------------ ###
 
+# Loss function
 loss = nn.HuberLoss()
-learning_rate = 0.001
-optimiser = torch.optim.AdamW(model.parameters(), lr=learning_rate) # Use the WAdam optimiser
+mass_loss_func = nn.L1Loss()
 
-N_epochs = 20
+# Optimiser
+optimiser = torch.optim.AdamW(model.parameters(), lr=control_panel.train_config.learning_rate, weight_decay=control_panel.train_config.weight_decay)
 
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-
+# Scheduler
 scheduler = ReduceLROnPlateau(
     optimiser, 
     mode='min',
-    factor=0.5,
-    patience=5,
-    min_lr=1e-6   
+    factor=control_panel.train_config.scheduler_factor,
+    patience=control_panel.train_config.scheduler_patience,
+    min_lr=control_panel.train_config.scheduler_min_lr
 )
 
 ### ------------------------------ Run Training Loop ------------------------------ ###
 
-# Load in mass scaling dat
-
+# Load in mass scaling data
 with h5py.File("kinematic_features_scaler_info.h5", "r") as f:
     scaler_Y_mean = torch.tensor(f["Y_mean"][:], device=device, dtype=torch.float32)
     scaler_Y_scale = torch.tensor(f["Y_scale"][:], device=device, dtype=torch.float32)
-    scaler_M_mean = torch.tensor(f["M_mean"][:], device=device, dtype=torch.float32)
-    scaler_M_scale = torch.tensor(f["M_scale"][:], device=device, dtype=torch.float32) 
-
-
-print("\n")
-print("="*60)
-print("Beginning Training Loop")
-print("="*60)
 
 # Track train losses
 losses = [] # Kinematic train loss
@@ -289,14 +357,13 @@ mass_val_losses = []
 # Track time
 times = []
 
-# KL settings (hyperparams)
-kl_weight_max = 0.1  # Maximum KL weight
-kl_ramp_epochs = 15   # Epochs to ramp up KL
+print("\n")
+print("="*60)
+print("Beginning Training Loop")
+print("="*60)
 
-# Mass loss settings (hyperparams)
-mass_weight = 0.1
-
-for epoch in range(N_epochs):
+# Run training loop
+for epoch in range(control_panel.train_config.num_epochs):
     start_time = time.time()
     model.train()
     epoch_train_loss = 0.0
@@ -304,7 +371,7 @@ for epoch in range(N_epochs):
     epoch_train_mass = 0.0
 
     # Ramp up KL weight
-    current_kl_weight = kl_weight_max * min(1.0, (epoch + 1) / kl_ramp_epochs)
+    current_kl_weight = control_panel.train_config.kl_weight_max * min(1.0, (epoch + 1) / control_panel.train_config.kl_ramp_epochs)
 
     for batch_x, batch_y, batch_m in train_loader:
         batch_x = batch_x.to(device)
@@ -322,32 +389,52 @@ for epoch in range(N_epochs):
         kl_loss = distribution_considering_loss(
             y_pred,
             batch_y,
-            bins=100,
+            bins=control_panel.train_config.kl_bins,
             hist_min=hist_min,
             hist_max=hist_max,
-            sigma=0.20
         )
 
-        # Unscale y pred and m 
+        # Unscale y pred, true targets, and m 
         y_pred_unscaled = y_pred * scaler_Y_scale + scaler_Y_mean
-        batch_m_unscaled = batch_m * scaler_M_scale + scaler_M_mean
+        batch_y_unscaled = batch_y * scaler_Y_scale + scaler_Y_mean
 
-        # Mass loss
-        top_px, top_py, top_pz = y_pred_unscaled[:, 0], y_pred_unscaled[:, 1], y_pred_unscaled[:, 2]
-        top_E = y_pred_unscaled[:, 6]
+        top_px_pred, top_py_pred, top_pz_pred = y_pred_unscaled[:, 0], y_pred_unscaled[:, 1], y_pred_unscaled[:, 2]
+        top_E_pred = y_pred_unscaled[:, 6]
 
-        antitop_px, antitop_py, antitop_pz = y_pred_unscaled[:, 3], y_pred_unscaled[:, 4], y_pred_unscaled[:, 5]
-        antitop_E = y_pred_unscaled[:, 7]
+        antitop_px_pred, antitop_py_pred, antitop_pz_pred = y_pred_unscaled[:, 3], y_pred_unscaled[:, 4], y_pred_unscaled[:, 5]
+        antitop_E_pred = y_pred_unscaled[:, 7]
 
-        # Top mass from 4-vector
-        top_m_pred = torch.sqrt(torch.clamp(top_E**2 - (top_px**2 + top_py**2 + top_pz**2), min=1e-6))
-        antitop_m_pred = torch.sqrt(torch.clamp(antitop_E**2 - (antitop_px**2 + antitop_py**2 + antitop_pz**2), min=1e-6))
+        top_px_true, top_py_true, top_pz_true = batch_y_unscaled[:, 0], batch_y_unscaled[:, 1], batch_y_unscaled[:, 2]
+        top_E_true = batch_y_unscaled[:, 6]
 
-        # Mass loss
-        mass_loss = loss(top_m_pred, batch_m_unscaled[:, 0]) + loss(antitop_m_pred, batch_m_unscaled[:, 1])
+        antitop_px_true, antitop_py_true, antitop_pz_true = batch_y_unscaled[:, 3], batch_y_unscaled[:, 4], batch_y_unscaled[:, 5]
+        antitop_E_true = batch_y_unscaled[:, 7]
+
+        top_m_pred = torch.sqrt(torch.clamp(top_E_pred**2 - (top_px_pred**2 + top_py_pred**2 + top_pz_pred**2), min=1e-6))
+        antitop_m_pred = torch.sqrt(torch.clamp(antitop_E_pred**2 - (antitop_px_pred**2 + antitop_py_pred**2 + antitop_pz_pred**2), min=1e-6))
+
+        ttbar_px_pred = top_px_pred + antitop_px_pred
+        ttbar_py_pred = top_py_pred + antitop_py_pred
+        ttbar_pz_pred = top_pz_pred + antitop_pz_pred
+        ttbar_E_pred  = top_E_pred + antitop_E_pred
+
+        ttbar_px_true = top_px_true + antitop_px_true
+        ttbar_py_true = top_py_true + antitop_py_true
+        ttbar_pz_true = top_pz_true + antitop_pz_true
+        ttbar_E_true  = top_E_true + antitop_E_true
+
+        m_ttbar_pred = torch.sqrt(torch.clamp(ttbar_E_pred**2 - (ttbar_px_pred**2 + ttbar_py_pred**2 + ttbar_pz_pred**2), min=1e-6))
+        m_ttbar_true = torch.sqrt(torch.clamp(ttbar_E_true**2 - (ttbar_px_true**2 + ttbar_py_true**2 + ttbar_pz_true**2), min=1e-6))
+
+        individual_mass_loss = mass_loss_func(top_m_pred, batch_m[:, 0]) + mass_loss_func(antitop_m_pred, batch_m[:, 1])
+
+        system_mass_loss = mass_loss_func(m_ttbar_pred, m_ttbar_true)
+
+        # Sum of both constraints
+        mass_loss = individual_mass_loss + system_mass_loss
 
         # Combined loss: Huber + KL + Mass loss
-        total_loss = huber_loss + current_kl_weight * kl_loss + mass_loss*mass_weight
+        total_loss = huber_loss + current_kl_weight * kl_loss + mass_loss * control_panel.train_config.mass_loss_weight
         
         optimiser.zero_grad()
         total_loss.backward()
@@ -387,32 +474,52 @@ for epoch in range(N_epochs):
             kl_loss = distribution_considering_loss(
                 y_pred,
                 batch_y,
-                bins=100,
+                bins=control_panel.train_config.kl_bins,
                 hist_min=hist_min,
                 hist_max=hist_max,
-                sigma=0.20
             )
 
-            # Unscale y pred and m 
+            # Unscale y pred, true targets, and m 
             y_pred_unscaled = y_pred * scaler_Y_scale + scaler_Y_mean
-            batch_m_unscaled = batch_m * scaler_M_scale + scaler_M_mean
+            batch_y_unscaled = batch_y * scaler_Y_scale + scaler_Y_mean
 
-            # Mass loss
-            top_px, top_py, top_pz = y_pred_unscaled[:, 0], y_pred_unscaled[:, 1], y_pred_unscaled[:, 2]
-            top_E = y_pred_unscaled[:, 6]
+            top_px_pred, top_py_pred, top_pz_pred = y_pred_unscaled[:, 0], y_pred_unscaled[:, 1], y_pred_unscaled[:, 2]
+            top_E_pred = y_pred_unscaled[:, 6]
 
-            antitop_px, antitop_py, antitop_pz = y_pred_unscaled[:, 3], y_pred_unscaled[:, 4], y_pred_unscaled[:, 5]
-            antitop_E = y_pred_unscaled[:, 7]
+            antitop_px_pred, antitop_py_pred, antitop_pz_pred = y_pred_unscaled[:, 3], y_pred_unscaled[:, 4], y_pred_unscaled[:, 5]
+            antitop_E_pred = y_pred_unscaled[:, 7]
 
-            # Top mass from 4-vector
-            top_m_pred = torch.sqrt(torch.clamp(top_E**2 - (top_px**2 + top_py**2 + top_pz**2), min=1e-6))
-            antitop_m_pred = torch.sqrt(torch.clamp(antitop_E**2 - (antitop_px**2 + antitop_py**2 + antitop_pz**2), min=1e-6))
+            top_px_true, top_py_true, top_pz_true = batch_y_unscaled[:, 0], batch_y_unscaled[:, 1], batch_y_unscaled[:, 2]
+            top_E_true = batch_y_unscaled[:, 6]
 
-            # Mass loss
-            mass_loss = loss(top_m_pred, batch_m_unscaled[:, 0]) + loss(antitop_m_pred, batch_m_unscaled[:, 1])
+            antitop_px_true, antitop_py_true, antitop_pz_true = batch_y_unscaled[:, 3], batch_y_unscaled[:, 4], batch_y_unscaled[:, 5]
+            antitop_E_true = batch_y_unscaled[:, 7]
+
+            top_m_pred = torch.sqrt(torch.clamp(top_E_pred**2 - (top_px_pred**2 + top_py_pred**2 + top_pz_pred**2), min=1e-6))
+            antitop_m_pred = torch.sqrt(torch.clamp(antitop_E_pred**2 - (antitop_px_pred**2 + antitop_py_pred**2 + antitop_pz_pred**2), min=1e-6))
+
+            ttbar_px_pred = top_px_pred + antitop_px_pred
+            ttbar_py_pred = top_py_pred + antitop_py_pred
+            ttbar_pz_pred = top_pz_pred + antitop_pz_pred
+            ttbar_E_pred  = top_E_pred + antitop_E_pred
+
+            ttbar_px_true = top_px_true + antitop_px_true
+            ttbar_py_true = top_py_true + antitop_py_true
+            ttbar_pz_true = top_pz_true + antitop_pz_true
+            ttbar_E_true  = top_E_true + antitop_E_true
+
+            m_ttbar_pred = torch.sqrt(torch.clamp(ttbar_E_pred**2 - (ttbar_px_pred**2 + ttbar_py_pred**2 + ttbar_pz_pred**2), min=1e-6))
+            m_ttbar_true = torch.sqrt(torch.clamp(ttbar_E_true**2 - (ttbar_px_true**2 + ttbar_py_true**2 + ttbar_pz_true**2), min=1e-6))
+
+            individual_mass_loss = mass_loss_func(top_m_pred, batch_m[:, 0]) + mass_loss_func(antitop_m_pred, batch_m[:, 1])
+
+            system_mass_loss = mass_loss_func(m_ttbar_pred, m_ttbar_true)
+
+            # Sum of both constraints
+            mass_loss = individual_mass_loss + system_mass_loss
 
             # Combined loss: Huber + KL + Mass loss
-            total_loss = huber_loss + current_kl_weight * kl_loss + mass_loss*mass_weight      
+            total_loss = huber_loss + current_kl_weight * kl_loss + mass_loss * control_panel.train_config.mass_loss_weight
             
             epoch_val_loss += total_loss.item()
             epoch_val_kl += kl_loss.item()
@@ -428,9 +535,10 @@ for epoch in range(N_epochs):
 
     scheduler.step(avg_val_loss)
 
-    print(f"Epoch {epoch+1}/{N_epochs} | Train Loss: {avg_train_loss:.4f} (KL: {avg_train_kl:.4f}) | Val Loss: {avg_val_loss:.4f} (KL: {avg_val_kl:.4f}) | Train - Val Loss Diff : {np.abs(avg_val_loss - avg_train_loss):.4f} | Mass Train Loss : {avg_train_mass:.4f} | Mass Val Loss : {avg_val_mass:.4f} | Epoch Time: {epoch_time:.2f}s | Total Time: {np.sum(times):.2f}s")
+    if (epoch + 1) % 1 == 0:
+        print(f"Epoch {epoch+1}/{control_panel.train_config.num_epochs} | Train Loss: {avg_train_loss:.4f} (KL: {avg_train_kl:.4f}) | Val Loss: {avg_val_loss:.4f} (KL: {avg_val_kl:.4f}) | Train - Val Loss Diff : {np.abs(avg_val_loss - avg_train_loss):.4f} | Mass Train Loss : {avg_train_mass:.4f} | Mass Val Loss : {avg_val_mass:.4f} | Epoch Time: {epoch_time:.2f}s | Total Time: {np.sum(times):.2f}s")
 
-    if epoch >= 150:
+    if epoch >= control_panel.train_config.min_early_stop:
         early_stopping(avg_val_loss)
         if early_stopping.early_stop:
             print("Early stopping triggered.")
@@ -439,8 +547,6 @@ for epoch in range(N_epochs):
     torch.cuda.empty_cache()
     
 ### ------------------------------ Evaluate Model ------------------------------ ###
-
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 # Load scaler information
 with h5py.File("kinematic_features_scaler_info.h5", "r") as f:
@@ -462,7 +568,62 @@ with torch.no_grad():
 
 Y_pred = torch.cat(list_of_predictions).numpy()
 
-# Compute and display metrics for each target feature
+# Unscale from 0-1 into GeV
+Y_pred_unscaled = Y_pred * scaler_Y_scale + scaler_Y_mean
+Y_test_unscaled = Y_test_scaled * scaler_Y_scale + scaler_Y_mean
+
+### ------------------------------ Calculate KL Divergence ------------------------------ ###
+
+
+def kl_divergence(pred, target, bins=100):
+    # Identify common range
+    min_val = min(pred.min(), target.min())
+    max_val = max(pred.max(), target.max())
+    
+    # Create histograms using bins and common range
+    pred_hist, _ = np.histogram(pred, bins=bins, range=(min_val, max_val))
+    target_hist, _ = np.histogram(target, bins=bins, range=(min_val, max_val))
+    
+    # Convert to probabilities
+    pred_probs = pred_hist / (pred_hist.sum() + 1e-10) # Addition of 1e-10 stops any divisions by 0
+    target_probs = target_hist / (target_hist.sum() + 1e-10)
+    
+    # Avoid log(0)
+    pred_probs = np.clip(pred_probs, 1e-10, 1.0)
+    target_probs = np.clip(target_probs, 1e-10, 1.0)
+    
+    # KL divergence: target || pred
+    kl = np.sum(target_probs * np.log(target_probs / pred_probs))
+    
+    return kl
+
+def bootstrap_kl_divergence(pred, target, n_bootstrap=1000, bins=100):
+    
+    kl_original = kl_divergence(pred, target, bins)
+    
+    # Combine samples for resampling
+    combined = np.concatenate([pred, target])
+    n_pred = len(pred)
+    n_target = len(target)
+    
+    # Bootstrap resampling
+    kl_bootstrap = []
+    for _ in range(n_bootstrap):
+        # Resample with replacement
+        pred_resample = np.random.choice(combined, size=n_pred, replace=True)
+        target_resample = np.random.choice(combined, size=n_target, replace=True)
+        
+        # Calculate KL on resampled data
+        kl_bootstrap.append(kl_divergence(pred_resample, target_resample, bins))
+    
+    # Calculate statistics, chopping off lower 2.5% and upper 2.5%
+    kl_std = np.std(kl_bootstrap)
+    ci_lower = np.percentile(kl_bootstrap, 2.5)
+    ci_upper = np.percentile(kl_bootstrap, 97.5)
+    
+    return kl_original, kl_std, (ci_lower, ci_upper), kl_bootstrap
+
+### ------------------------------ Display Metrics ------------------------------ ###
 
 # Store target feature names in an array
 target_names = ['top_px', 'top_py', 'top_pz', 
@@ -474,20 +635,18 @@ print("TARGET FEATURE METRICS")
 print("="*60)
 r2_per_dim = []
 for i in range(8):
-    mse = mean_squared_error(Y_test_scaled[:, i], Y_pred[:, i])
-    r2 = r2_score(Y_test_scaled[:, i], Y_pred[:, i])
+    mse = mean_squared_error(Y_test_unscaled[:, i], Y_pred_unscaled[:, i])
+    r2 = r2_score(Y_test_unscaled[:, i], Y_pred_unscaled[:, i])
     r2_per_dim.append(r2)
-    mae = mean_absolute_error(Y_test_scaled[:,i], Y_pred[:,i])
+    mae = mean_absolute_error(Y_test_unscaled[:,i], Y_pred_unscaled[:,i])
     print(f"{target_names[i]}: MSE={mse:.4f}, R²={r2:.4f}, MAE = {mae:.4f}\n")
 print("="*60)
+for i, name in enumerate(target_names):
+    kl_feat, std_feat, ci_feat, _ = bootstrap_kl_divergence(Y_pred_unscaled[:, i], Y_test_unscaled[:, i], n_bootstrap=1000, bins=100)
+    print(f"{name}: KL = {kl_feat:.4f} ± {std_feat:.4f}")
+print("="*60)
 
-# Inverse transform
-Y_pred_geV = Y_pred * scaler_Y_scale + scaler_Y_mean
-Y_test_geV = Y_test_scaled * scaler_Y_scale + scaler_Y_mean
-    
-### ------------------------------ Loss Curve and R^2 Plots ------------------------------ #
-
-import matplotlib.pyplot as plt
+### ------------------------------ Plot Loss Curve and R^2 Plots ------------------------------ #
 
 fig1, axes1 = plt.subplots(1, 2, figsize=(16, 12))
 
@@ -518,24 +677,24 @@ for bar, val in zip(bars, r2_per_dim):
                    f'{val:.3f}', ha='center', va='bottom', fontsize=9)
 
 plt.tight_layout()
-plt.savefig("summary_plots.png")
+plt.savefig(control_panel.data_saving.loss_r2_summary_plots)
 
-### ------------------------------ Target Feature Distribution and Resolution ------------------------------ #
+### ------------------------------ Plot Target Feature Distribution and Resolution ------------------------------ #
 
 fig2, axes2 = plt.subplots(2, 8, figsize=(24, 8))
 
 for i in range(8):
     # Distribution (True vs Pred)
-    axes2[0, i].hist(Y_test_scaled[:, i], bins=100, density=True, histtype='step',
+    axes2[0, i].hist(Y_test_unscaled[:, i], bins=100, density=True, histtype='step',
                      label='True', color='blue', linewidth=1.5)
-    axes2[0, i].hist(Y_pred[:, i], bins=100, density=True, histtype='step',
+    axes2[0, i].hist(Y_pred_unscaled[:, i], bins=100, density=True, histtype='step',
                      label='Pred', color='red', linewidth=1.5)
     axes2[0, i].set_title(f'{target_names[i]}')
     axes2[0, i].legend()
     axes2[0, i].grid(True, alpha=0.3)
     
     # Resolution (Pred - True)
-    residuals = Y_pred[:, i] - Y_test_scaled[:, i]
+    residuals = Y_pred_unscaled[:, i] - Y_test_unscaled[:, i]
     axes2[1, i].hist(residuals, bins=50, color='red', alpha=0.7, edgecolor='black')
     axes2[1, i].axvline(0, color='black', linestyle='--', linewidth=2, label='Perfect')
     axes2[1, i].axvline(np.mean(residuals), color='blue', linestyle='-', linewidth=2,
@@ -552,23 +711,23 @@ for i in range(8):
     axes2[1, i].set_xlabel('Resolution (Pred - True)')
 
 plt.tight_layout()
-plt.savefig("per_target_feature_distribution_resolution.png")
+plt.savefig(control_panel.data_saving.target_feature_plots)
 
-### ------------------------------ Target Feature Scatter Plots ------------------------------ #
+### ------------------------------ Plot Target Feature Scatter Plots ------------------------------ #
 
 fig3, axes3 = plt.subplots(2, 4, figsize=(20, 10))
 
 for i, ax in enumerate(axes3.flatten()):
     # Scatter plot: True vs Pred
-    ax.scatter(Y_test_scaled[:, i], Y_pred[:, i], alpha=0.1, s=1, color='blue')
+    ax.scatter(Y_test_unscaled[:, i], Y_pred_unscaled[:, i], alpha=0.1, s=1, color='blue')
     
     # Perfect prediction line
-    min_val = min(Y_test_scaled[:, i].min(), Y_pred[:, i].min())
-    max_val = max(Y_test_scaled[:, i].max(), Y_pred[:, i].max())
+    min_val = min(Y_test_unscaled[:, i].min(), Y_pred_unscaled[:, i].min())
+    max_val = max(Y_test_unscaled[:, i].max(), Y_pred_unscaled[:, i].max())
     ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect')
     
     # R² for this dimension
-    r2 = r2_score(Y_test_scaled[:, i], Y_pred[:, i])
+    r2 = r2_score(Y_test_unscaled[:, i], Y_pred_unscaled[:, i])
     
     ax.set_xlabel('True')
     ax.set_ylabel('Predicted')
@@ -577,15 +736,10 @@ for i, ax in enumerate(axes3.flatten()):
     ax.legend()
 
 plt.tight_layout()
-plt.savefig("per_dimension_scatter_plots.png")
+plt.savefig(control_panel.data_saving.target_dimension_scatter_plots)
 plt.show()
 
 ### ------------------------------ Invariant Mass Calculation Using Awk Vectors ------------------------------ #
-
-import awkward as ak
-
-Y_pred_unscaled = Y_pred * scaler_Y_scale + scaler_Y_mean
-Y_test_unscaled = Y_test_scaled * scaler_Y_scale + scaler_Y_mean
 
 # Convert NumPy to Awkward arrays
 Y_pred_awk = ak.from_numpy(Y_pred_unscaled)
@@ -637,7 +791,7 @@ ttbar_true = top_true + antitop_true
 M_pred = ttbar_pred.mass
 M_true = ttbar_true.mass
 
-### ------------------------------ Invariant Mass Plots ------------------------------ #
+### ------------------------------ Plot Invariant Mass ------------------------------ #
 
 fig4, axes4 = plt.subplots(1, 3, figsize=(18, 6))
 
@@ -678,17 +832,22 @@ axes4[2].legend()
 axes4[2].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("invariant_mass_plots.png")
+plt.savefig(control_panel.data_saving.invariant_mass_plots)
 plt.show()
 
 ### ------------------------------ Print Metrics for Invariant Mass ------------------------------ #
-
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 
 MSE_mass = mean_squared_error(M_true, M_pred)
 RMSE_mass = np.sqrt(MSE_mass)
 MAE_mass = mean_absolute_error(M_true, M_pred)
 R2_mass = r2_score(M_true, M_pred)
+
+M_pred_np = ak.to_numpy(M_pred)
+M_true_np = ak.to_numpy(M_true)
+
+kl_mass, std_mass, ci_mass, _ = bootstrap_kl_divergence(
+    M_pred_np, M_true_np, n_bootstrap=1000, bins=100
+)
 
 print("\n" + "="*60)
 print("INVARIANT MASS METRICS")
@@ -697,6 +856,7 @@ print(f"MSE:  {MSE_mass:.4f}")
 print(f"RMSE: {RMSE_mass:.4f} GeV")
 print(f"MAE:  {MAE_mass:.4f} GeV")
 print(f"R²:   {R2_mass:.4f}")
+print(f"ttbar_mass: KL = {kl_mass:.4f} ± {std_mass:.4f}")
 print("="*60)
 
 # ------------------------------ Save Predictions to File (Use for ORIGIN) ------------------------------ #
@@ -704,7 +864,7 @@ print("="*60)
 results = np.column_stack([M_true, M_pred, M_pred - M_true])
 
 np.savetxt(
-    "ttbar_invariant_mass_results.txt", 
+    control_panel.data_saving.invariant_mass_data, 
     results,
     header="True_Mass_GeV  Predicted_Mass_GeV  Resolution_GeV",
     fmt="%.2f",
