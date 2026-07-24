@@ -57,11 +57,12 @@ from torch.utils.data import TensorDataset, DataLoader
 
 batch_size = 4096
 
-dataset_train = CustomDataset("kinematic_features_train.h5")
-dataset_val = CustomDataset("kinematic_features_val.h5")
-dataset_test = CustomDataset("kinematic_features_test.h5")
+dataset_train = CustomDataset("../train_inputs/kinematic_features_train.h5")
+dataset_val = CustomDataset("../train_inputs/kinematic_features_val.h5")
+dataset_test = CustomDataset("../train_inputs/kinematic_features_test.h5")
 
 N_inputs = dataset_train[0][0].shape[0]
+print(f"Input Length: {N_inputs}")
 
 with h5py.File("../train_inputs/feature_labels.h5", "r") as f:
     feature_names = f["Feature_labels"][:].astype(str)
@@ -70,21 +71,18 @@ train_loader = DataLoader(
     dataset_train, 
     batch_size=batch_size, 
     shuffle=True,
-    num_workers=4,
     pin_memory=True)
 
 val_loader = DataLoader(
     dataset_val, 
     batch_size=batch_size, 
     shuffle=False,
-    num_workers=4,
     pin_memory=True
 )
 test_loader = DataLoader(
     dataset_test, 
     batch_size=batch_size, 
     shuffle=False,
-    num_workers=4,
     pin_memory=True
 )
 
@@ -138,7 +136,7 @@ class ConditionalVelocityNet(nn.Module):
 
 def conditional_flow_matching_loss(VelocityNet, ContEmbedder, X_train_batch, Y_train_batch, sigma_min=1e-4):
     # Target Sampling
-    y1 = Y_train_batch.unsqueeze(1)
+    y1 = Y_train_batch
 
     # Sample Batch
     sample_batch_size = X_train_batch.shape[0]
@@ -159,12 +157,13 @@ def conditional_flow_matching_loss(VelocityNet, ContEmbedder, X_train_batch, Y_t
     return ((v_pred - v_target) ** 2).mean()
 
 embed_dim = 64
+target_features = 8
 
 Embedder = ContextEmbeddor(Ninputs=N_inputs,Nembed=embed_dim).to(device)
 Sinusoidembed = SinusoidalPositionEmbeddings(dim=embed_dim).to(device)
 
 VelNet = ConditionalVelocityNet(
-    Ninput=1, 
+    Ninput=target_features, 
     Ncontext=embed_dim, 
     TimeEmbedder=Sinusoidembed,
     Nhidden=256).to(device)
@@ -220,21 +219,21 @@ def sample_flow_mean(
         c = c.unsqueeze(1).expand(B,S,c.shape[-1])
 
         # Ininial noise (B,S,1)
-        x  = torch.randn(B,S,1, device=device)
+        x  = torch.randn(B,S,target_features, device=device)
 
         dt = 1.0 / n_steps
 
         for i in range (n_steps):
             t_val = i / n_steps
-            t = torch.full((B, S, 1), t_val / n_steps, device=device)
+            t = torch.full((B, S, 1), t_val, device=device)
 
             # Flatten batch and predict initial velocity
-            v1 = model(x.reshape(B*S, 1), t.reshape(B*S, 1), c.reshape(B*S, -1)).reshape(B, S, 1)
+            v1 = model(x.reshape(B*S, target_features), t.reshape(B*S, 1), c.reshape(B*S, -1)).reshape(B, S, target_features)
             
             # Predict half-step position and velocity
             x_half = x + 0.5 * dt * v1
             t_half = torch.full((B, S, 1), t_val + 0.5 * dt, device=device)
-            v2 = model(x_half.reshape(B*S, 1), t_half.reshape(B*S, 1), c.reshape(B*S, -1)).reshape(B, S, 1)
+            v2 = model(x_half.reshape(B*S, target_features), t_half.reshape(B*S, 1), c.reshape(B*S, -1)).reshape(B, S, target_features)
 
             # Take the step using the midpoint velocity
             x = x + dt * v2
@@ -294,11 +293,10 @@ for epoch in range(N_epochs):
 
     epoch_train_loss = 0.0
 
-    for batch_x, batch_y, batch_m in train_loader:
+    for batch_x, batch_y, _ in train_loader:
         # Ensure batch is on GPU
         batch_x = batch_x.to(device)
         batch_y = batch_y.to(device)
-        batch_m = batch_m.to(device)
 
         optimiser.zero_grad()
 
@@ -334,7 +332,7 @@ for epoch in range(N_epochs):
     epoch_val_loss = 0.0
 
     with torch.no_grad():
-        for batch_x, batch_y in val_loader:
+        for batch_x, batch_y, _ in val_loader:
             # Ensure batch is on GPU
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
@@ -368,21 +366,20 @@ for epoch in range(N_epochs):
             print(f'Final Epoch before early stop [{epoch+1}/{N_epochs}], Training Loss: {avg_train_loss:.4f}, Validation Loss: {avg_val_loss:.4f}')
             break
 
-    torch.cuda.empty_cache()
 print("Training Complete")
 print("="*60)
 
 ### ------------------------------ Evaluate Model ------------------------------ ###
 
 # Load scaler info
-with h5py.File("../train_inputs/larger_scaler_info.h5", "r") as f:
-    scaler_Y_mean = f["Y_mean"][()]
-    scaler_Y_scale = f["Y_scale"][()]
-    scaler_M_mean = torch.tensor(f["M_mean"][:], device=device, dtype=torch.float32)
-    scaler_M_scale = torch.tensor(f["M_scale"][:], device=device, dtype=torch.float32) 
+with h5py.File("../train_inputs/kinematic_features_scaler_info.h5", "r") as f:
+    scaler_Y_mean = torch.tensor(f["Y_mean"][:], device="cpu", dtype=torch.float32)
+    scaler_Y_scale = torch.tensor(f["Y_scale"][:], device="cpu", dtype=torch.float32)
+    scaler_M_mean = torch.tensor(f["M_mean"][:], device="cpu", dtype=torch.float32)
+    scaler_M_scale = torch.tensor(f["M_scale"][:], device="cpu", dtype=torch.float32) 
 
 # Load test targets directly from H5
-with h5py.File("../train_inputs/larger_ttbar_test.h5", "r") as f:
+with h5py.File("../train_inputs/kinematic_features_test.h5", "r") as f:
     Y_test_scaled = f["Y"][:]
 
 VelNet.eval()
@@ -397,7 +394,10 @@ with torch.no_grad():
 
         list_of_predictions.append(pred_mean.cpu())
 
-Y_pred = torch.concatenate(list_of_predictions).detach().cpu().numpy().flatten()
+print("Test Predictions Completed")
+print("="*60)
+
+Y_pred = torch.cat(list_of_predictions).detach().numpy()
 
 from sklearn.metrics import mean_squared_error,root_mean_squared_error,mean_absolute_error,r2_score
 from scipy.special import rel_entr
@@ -417,8 +417,12 @@ print("="*60)
 epsilon = 1e-10
 r2_per_dim = []
 KLD_per_dim = []
-for i in range(8):
-    bins = np.linspace(0, max(np.max(Y_test_scaled[:, i]),np.max(Y_pred[:, i])), num=100) # Adjust range to your P_T spectrum
+for i in range(target_features):
+    bins = np.linspace(min(np.min(Y_test_scaled[:,i]), np.min(Y_pred[:,i])), 
+    max(np.max(Y_test_scaled[:, i]),np.max(Y_pred[:, i])), 
+    num=200
+    )
+
     p_counts, _ = np.histogram(Y_test_scaled[:, i], bins=bins)
     q_counts, _ = np.histogram(Y_pred[:, i], bins=bins)
 
@@ -435,8 +439,8 @@ for i in range(8):
 print("="*60)
 
 # Inverse transform
-Y_pred_geV = Y_pred * scaler_Y_scale + scaler_Y_mean
-Y_test_geV = Y_test_scaled * scaler_Y_scale + scaler_Y_mean
+Y_pred_geV = Y_pred * scaler_Y_scale.numpy() + scaler_Y_mean.numpy()
+Y_test_geV = Y_test_scaled * scaler_Y_scale.numpy() + scaler_Y_mean.numpy()
 
 # ------------------------------ Plotting ------------------------------ #
 import matplotlib.pyplot as plt
@@ -446,10 +450,6 @@ fig1, axes1 = plt.subplots(1, 2, figsize=(16, 12))
 # Loss curve plot
 axes1[0].plot(losses, label='Kinematic Train Loss')
 axes1[0].plot(val_losses, label='Kinematic Validation Loss')
-axes1[0].plot(kl_losses, label='KL Train Loss')
-axes1[0].plot(kl_val_losses, label='KL Validation Loss')
-axes1[0].plot(mass_losses, label='Mass Train Loss')
-axes1[0].plot(mass_val_losses, label='Mass Validation Loss')
 axes1[0].set_xlabel('Epoch')
 axes1[0].set_ylabel('Loss')
 axes1[0].set_title('Training and Validation Loss')
@@ -470,7 +470,7 @@ for bar, val in zip(bars, r2_per_dim):
                    f'{val:.3f}', ha='center', va='bottom', fontsize=9)
 
 plt.tight_layout()
-plt.savefig("summary_plots.png")
+plt.savefig("../plots/kinematic/summary_plots_1.png")
 
 ### ------------------------------ Target Feature Distribution and Resolution ------------------------------ #
 
@@ -504,7 +504,7 @@ for i in range(8):
     axes2[1, i].set_xlabel('Resolution (Pred - True)')
 
 plt.tight_layout()
-plt.savefig("per_target_feature_distribution_resolution.png")
+plt.savefig("../plots/kinematic/per_target_feature_distribution_resolution_1.png")
 
 ### ------------------------------ Target Feature Scatter Plots ------------------------------ #
 
@@ -529,15 +529,16 @@ for i, ax in enumerate(axes3.flatten()):
     ax.legend()
 
 plt.tight_layout()
-plt.savefig("per_dimension_scatter_plots.png")
+plt.savefig("../plots/kinematic/per_dimension_scatter_plots_1.png")
 plt.show()
 
 ### ------------------------------ Invariant Mass Calculation Using Awk Vectors ------------------------------ #
 
+import vector
 import awkward as ak
 
-Y_pred_unscaled = Y_pred * scaler_Y_scale + scaler_Y_mean
-Y_test_unscaled = Y_test_scaled * scaler_Y_scale + scaler_Y_mean
+Y_pred_unscaled = Y_pred * scaler_Y_scale.numpy() + scaler_Y_mean.numpy()
+Y_test_unscaled = Y_test_scaled * scaler_Y_scale.numpy() + scaler_Y_mean.numpy()
 
 # Convert NumPy to Awkward arrays
 Y_pred_awk = ak.from_numpy(Y_pred_unscaled)
@@ -630,13 +631,23 @@ axes4[2].legend()
 axes4[2].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("invariant_mass_plots.png")
+plt.savefig("../plots/kinematic/invariant_mass_plots_1.png")
 plt.show()
 
 ### ------------------------------ Print Metrics for Invariant Mass ------------------------------ #
 
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 
+bins = np.linspace(0, max(np.max(M_true),np.max(M_pred)), num=100) 
+p_counts, _ = np.histogram(M_true, bins=bins)
+q_counts, _ = np.histogram(M_pred, bins=bins)
+
+
+epsilon = 1e-10
+P = (p_counts + epsilon) / np.sum(p_counts + epsilon)
+Q = (q_counts + epsilon) / np.sum(q_counts + epsilon)
+
+KLD_mass = np.sum(rel_entr(P, Q))
 MSE_mass = mean_squared_error(M_true, M_pred)
 RMSE_mass = np.sqrt(MSE_mass)
 MAE_mass = mean_absolute_error(M_true, M_pred)
@@ -649,6 +660,7 @@ print(f"MSE:  {MSE_mass:.4f}")
 print(f"RMSE: {RMSE_mass:.4f} GeV")
 print(f"MAE:  {MAE_mass:.4f} GeV")
 print(f"R²:   {R2_mass:.4f}")
+print(f"KLD: {KLD_mass:.4f}")
 print("="*60)
  
 # ------------------------------ Save Predictions to File (Use for ORIGIN) ------------------------------ #
@@ -656,7 +668,7 @@ print("="*60)
 results = np.column_stack([M_true, M_pred, M_pred - M_true])
 
 np.savetxt(
-    "ttbar_invariant_mass_results.txt", 
+    "../train_outputs/ttbar_invariant_mass_results_1.txt", 
     results,
     header="True_Mass_GeV  Predicted_Mass_GeV  Resolution_GeV",
     fmt="%.2f",
