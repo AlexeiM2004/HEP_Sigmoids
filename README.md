@@ -1,8 +1,4 @@
 # HEP_Sigmoids
-<<<<<<< HEAD
-Summer Research Project Repository for ML inference in HEP
-=======
-
 Summer Research Project Repository for ML inference in High Energy Physics
 
 Authors;
