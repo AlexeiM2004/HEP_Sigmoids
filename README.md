@@ -8,7 +8,7 @@ Authors;
 Supervisors;
 - Ethan Simpson
 - Yvonne Peters
-- Han 
+- Tzu-Han Chang 
 
 ## Overview
 
