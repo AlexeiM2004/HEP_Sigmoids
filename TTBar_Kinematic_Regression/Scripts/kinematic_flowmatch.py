@@ -106,12 +106,11 @@ class SinusoidalPositionEmbeddings(nn.Module):
     def __init__(self, dim):
         super().__init__()
         self.dim = dim
+        self.half_dim = dim // 2
 
     def forward(self, time):
-        device = time.device
-        half_dim = self.dim // 2
-        embeddings = np.log(10000) / (half_dim - 1)
-        embeddings = torch.exp(torch.arange(half_dim, device=device) * -embeddings)
+        embeddings = np.log(10000) / (self.half_dim - 1)
+        embeddings = torch.exp(torch.arange(self.half_dim, device=device) * -embeddings)
         embeddings = time * embeddings
         embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1)
         return embeddings
@@ -243,7 +242,7 @@ def sample_flow_mean(
 ### ------------------------------ Early stopping mechanism ------------------------------ ###
 
 class EarlyStopping:
-    def __init__(self, patience=20, min_delta=0):
+    def __init__(self, patience=35, min_delta=0.03):
         self.patience = patience        # How many epochs to wait
         self.min_delta = min_delta      # Minimum improvement to count
         self.counter = 0
@@ -282,7 +281,7 @@ val_losses = [] # Keeps track of validation loss @ each epoch
 times = [] # Keep track of times
 
 
-N_epochs = 250 # Number of epochs we iterate over
+N_epochs = 50 # Number of epochs we iterate over
 
 for epoch in range(N_epochs):
 
@@ -369,12 +368,31 @@ for epoch in range(N_epochs):
 print("Training Complete")
 print("="*60)
 
+### ------------------------------ Save Model ------------------------------ ###
+save_model = True
+if save_model == False:
+    # Combine models, optimizer, and architecture params into a single model dict
+    model_dict = {
+        'embedder_state_dict': Embedder.state_dict(),
+        'velnet_state_dict': VelNet.state_dict(),
+        'optimizer_state_dict': optimiser.state_dict(),
+        'hyperparameters': {
+            'N_inputs': N_inputs,
+            'embed_dim': embed_dim,
+            'target_features': target_features,
+            'Nhidden': 256
+        }
+    }
+
+    torch.save(checkpoint, "../trained_models/kinematic_flowmatch_model_50_samp_250.pt")
+    print("Saved model to ../trained_models/kinematic_flowmatch_model_50_samp_250.pt")
+
 ### ------------------------------ Evaluate Model ------------------------------ ###
 
 # Load scaler info
 with h5py.File("../train_inputs/kinematic_features_scaler_info.h5", "r") as f:
-    scaler_Y_mean = torch.tensor(f["Y_mean"][:], device="cpu", dtype=torch.float32)
-    scaler_Y_scale = torch.tensor(f["Y_scale"][:], device="cpu", dtype=torch.float32)
+    scaler_Y_mean = torch.tensor(f["Y_mean"][:], device=device, dtype=torch.float32)
+    scaler_Y_scale = torch.tensor(f["Y_scale"][:], device=device, dtype=torch.float32)
     scaler_M_mean = torch.tensor(f["M_mean"][:], device="cpu", dtype=torch.float32)
     scaler_M_scale = torch.tensor(f["M_scale"][:], device="cpu", dtype=torch.float32) 
 
@@ -386,18 +404,42 @@ VelNet.eval()
 Embedder.eval()
 
 list_of_predictions = []
+mass_predictions = []
 with torch.no_grad():
     for inputs, targets, _ in test_loader:
         inputs = inputs.to(device) 
         outputs = sample_flow_mean(VelNet, Embedder, inputs, n_steps=250)
+
+        # Unscale Outputs
+        outputs_unscaled = outputs * scaler_Y_scale + scaler_Y_mean
+
+        # Extract target features
+        top_px, top_py, top_pz = outputs_unscaled[:, :, 0], outputs_unscaled[:, :, 1], outputs_unscaled[:, :, 2]
+        top_E = outputs_unscaled[:, :, 6]
+
+        antitop_px, antitop_py, antitop_pz = outputs_unscaled[:, :, 3], outputs_unscaled[:, :, 4], outputs_unscaled[:, :, 5]
+        antitop_E = outputs_unscaled[:, :, 7]
+        
+        # Concatenate predictions
+        px = top_px + antitop_px
+        py = top_py + antitop_py
+        pz = top_pz + antitop_pz
+        En = top_E + antitop_E
+
+        # Predict top mass from 4-vector
+        masses = torch.sqrt(torch.clamp(En**2 - (px**2 + py**2 + pz**2), min=1e-6))
+
         pred_mean = torch.mean(outputs,dim=1)
+        pred_mass_mean = torch.mean(masses, dim=1)
 
         list_of_predictions.append(pred_mean.cpu())
+        mass_predictions.append(pred_mass_mean.cpu())
 
 print("Test Predictions Completed")
 print("="*60)
 
 Y_pred = torch.cat(list_of_predictions).detach().numpy()
+M_pred = torch.cat(mass_predictions).detach().numpy()
 
 from sklearn.metrics import mean_squared_error,root_mean_squared_error,mean_absolute_error,r2_score
 from scipy.special import rel_entr
@@ -438,6 +480,9 @@ for i in range(target_features):
     print(f"{target_names[i]}: MSE={mse:.4f}, R²={r2:.4f}, MAE = {mae:.4f}, KLD={KLD:.4f}\n")
 print("="*60)
 
+scaler_Y_scale = scaler_Y_scale.cpu()
+scaler_Y_mean = scaler_Y_mean.cpu()
+
 # Inverse transform
 Y_pred_geV = Y_pred * scaler_Y_scale.numpy() + scaler_Y_mean.numpy()
 Y_test_geV = Y_test_scaled * scaler_Y_scale.numpy() + scaler_Y_mean.numpy()
@@ -470,7 +515,7 @@ for bar, val in zip(bars, r2_per_dim):
                    f'{val:.3f}', ha='center', va='bottom', fontsize=9)
 
 plt.tight_layout()
-plt.savefig("../plots/kinematic/summary_plots_1.png")
+plt.savefig("../plots/kinematic/summary_plots_50_samp_250.png")
 
 ### ------------------------------ Target Feature Distribution and Resolution ------------------------------ #
 
@@ -504,7 +549,7 @@ for i in range(8):
     axes2[1, i].set_xlabel('Resolution (Pred - True)')
 
 plt.tight_layout()
-plt.savefig("../plots/kinematic/per_target_feature_distribution_resolution_1.png")
+plt.savefig("../plots/kinematic/per_target_feature_distribution_resolution_50_samp_250.png")
 
 ### ------------------------------ Target Feature Scatter Plots ------------------------------ #
 
@@ -529,7 +574,7 @@ for i, ax in enumerate(axes3.flatten()):
     ax.legend()
 
 plt.tight_layout()
-plt.savefig("../plots/kinematic/per_dimension_scatter_plots_1.png")
+plt.savefig("../plots/kinematic/per_dimension_scatter_plots_50_samp_250.png")
 plt.show()
 
 ### ------------------------------ Invariant Mass Calculation Using Awk Vectors ------------------------------ #
@@ -537,31 +582,10 @@ plt.show()
 import vector
 import awkward as ak
 
-Y_pred_unscaled = Y_pred * scaler_Y_scale.numpy() + scaler_Y_mean.numpy()
 Y_test_unscaled = Y_test_scaled * scaler_Y_scale.numpy() + scaler_Y_mean.numpy()
 
 # Convert NumPy to Awkward arrays
-Y_pred_awk = ak.from_numpy(Y_pred_unscaled)
 Y_test_awk = ak.from_numpy(Y_test_unscaled)
-
-# Predicted vectors
-top_pred = vector.Array(
-    ak.zip({
-        'px': Y_pred_awk[:, 0],
-        'py': Y_pred_awk[:, 1],
-        'pz': Y_pred_awk[:, 2],
-        'E': Y_pred_awk[:,6]
-    })
-)
-
-antitop_pred = vector.Array(
-    ak.zip({
-        'px': Y_pred_awk[:, 3],
-        'py': Y_pred_awk[:, 4],
-        'pz': Y_pred_awk[:, 5],
-        'E': Y_pred_awk[:,7]
-    })
-)
 
 # True vectors
 top_true = vector.Array(
@@ -583,11 +607,9 @@ antitop_true = vector.Array(
 )
 
 # Add them
-ttbar_pred = top_pred + antitop_pred
 ttbar_true = top_true + antitop_true
 
 # Get invariant mass
-M_pred = ttbar_pred.mass
 M_true = ttbar_true.mass
 
 ### ------------------------------ Invariant Mass Plots ------------------------------ #
@@ -631,7 +653,7 @@ axes4[2].legend()
 axes4[2].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("../plots/kinematic/invariant_mass_plots_1.png")
+plt.savefig("../plots/kinematic/invariant_mass_plots_50_samp_250.png")
 plt.show()
 
 ### ------------------------------ Print Metrics for Invariant Mass ------------------------------ #
@@ -668,7 +690,7 @@ print("="*60)
 results = np.column_stack([M_true, M_pred, M_pred - M_true])
 
 np.savetxt(
-    "../train_outputs/ttbar_invariant_mass_results_1.txt", 
+    "../train_outputs/ttbar_invariant_mass_results_50_samp_250.txt", 
     results,
     header="True_Mass_GeV  Predicted_Mass_GeV  Resolution_GeV",
     fmt="%.2f",
