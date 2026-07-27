@@ -1,8 +1,4 @@
 # HEP_Sigmoids
-<<<<<<< HEAD
-Summer Research Project Repository for ML inference in HEP
-=======
-
 Summer Research Project Repository for ML inference in High Energy Physics
 
 Authors;
@@ -12,7 +8,7 @@ Authors;
 Supervisors;
 - Ethan Simpson
 - Yvonne Peters
-- Han 
+- Tzu-Han Chang 
 
 ## Overview
 
@@ -59,5 +55,3 @@ Comprehensive investigation into regressing the invariant mass of the top-antito
 - Regressed px, py, pz, and energy components for top and antitop
 - Derived invariant mass from predicted kinematics
 - Compared performance against direct regression
-
->>>>>>> 202e7df7c016681b098da71d6e98eaa84a4e2769
