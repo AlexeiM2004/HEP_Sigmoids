@@ -393,12 +393,11 @@ MAE = mean_absolute_error(Y_test_scaled,Y_pred)
 R2 = r2_score(Y_test_scaled,Y_pred)
 
 # 1. Histogram the data to turn event regression into a PDF
-# Use identical binning for both!
-bins = np.linspace(0, max(np.max(Y_test_scaled),np.max(Y_pred)), num=100) # Adjust range to your P_T spectrum
+bins = np.linspace(0, max(np.max(Y_test_scaled),np.max(Y_pred)), num=100) 
 p_counts, _ = np.histogram(Y_test_scaled, bins=bins)
 q_counts, _ = np.histogram(Y_pred, bins=bins)
 
-# 2. Normalize so they sum to 1 (making them valid probabilities)
+# 2. Normalise
 epsilon = 1e-10
 P = (p_counts + epsilon) / np.sum(p_counts + epsilon)
 Q = (q_counts + epsilon) / np.sum(q_counts + epsilon)
