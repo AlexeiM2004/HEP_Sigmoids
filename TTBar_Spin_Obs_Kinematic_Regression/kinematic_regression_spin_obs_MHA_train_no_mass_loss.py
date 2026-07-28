@@ -1,0 +1,882 @@
+### ------------------------------ Code Brief ------------------------------ ###
+
+# Selects device (GPU)
+# Loads prepared and preprocessed data from 4 separate files (train,test,val,scaler)
+# Converts X and target into tensors using a custom dataset
+# Employs dataloaders for batching, with num workers = 4
+# Defines MHA transformer model architecture with attention pooling
+# Defines an early stopping mechanism
+# Defines loss function (Huber loss), optimiser (Wadam) and scheduler (reduceLRonplateu)
+# Runs training loop
+# Evaluates model
+# Generates plots
+
+### ------------------------------ Imports ------------------------------ ###
+
+import matplotlib.pyplot as plt 
+import os
+import numpy as np
+import torch
+import h5py
+import time
+import vector
+import awkward as ak
+from datetime import datetime
+from torch.utils.data import Dataset
+from torch.utils.data import TensorDataset, DataLoader
+import torch.nn as nn
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from dataclasses import dataclass, field
+
+### ------------------------------ Print Current Timestamp ------------------------------ ###
+
+current_time = datetime.now()
+formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
+print("Job started at :", formatted_time)
+
+### ------------------------------ Device Usage ------------------------------ ###
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using {device} device with number of GPUs: {torch.cuda.device_count()}")
+
+### ------------------------------ Control Panels ------------------------------ ###
+
+@dataclass
+class Data_Configuration:
+    train_file : str = "kinematic_spin_observable_features_train.h5"
+    val_file : str = "kinematic_spin_observable_features_val.h5"
+    test_file : str = "kinematic_spin_observable_features_test.h5"
+    scaler_file : str = "kinematic_spin_observable_features_scaler_info.h5"
+    batch_size : int = 4096
+    num_workers : int = 4
+    pin_memory : bool = True
+
+@dataclass
+class Model_Configuration:
+    d_model : int = 64
+    nhead : int = 4
+    num_layers : int = 4
+    dropout : float = 0.1 
+
+@dataclass
+class Training_Configuration:
+    # Early stopping mechanism
+    patience : int = 10
+    min_delta : float = 0.0
+    min_early_stop : int = 50 # Not used at the moment
+
+    # Training hyperparameters
+    num_epochs : int = 50
+    learning_rate : float = 0.005
+    weight_decay : float = 0.01
+
+    # KL divergence settings
+    kl_weight_max: float = 0.001
+    kl_ramp_epochs: int = 15
+    kl_bins: int = 100
+    kl_sigma: float = 0.20
+    kl_eps: float = 1e-8
+
+    # Scheduler settings
+    scheduler_factor: float = 0.5
+    scheduler_patience: int = 5
+    scheduler_min_lr: float = 1e-6
+
+@dataclass
+class Data_Saving:
+    loss_curve_r2_summary_plots : str = "MHA_train_no_mass_loss_loss_curve_r2_summary_plots.png"
+    distribution_summary_plots : str = "MHA_train_no_mass_loss_distribution_summary_plots.png"
+    resolution_summary_plots : str = "MHA_train_no_mass_loss_resolution_summary_plots.png"
+    scatter_summary_plots : str = "MHA_train_no_mass_loss_scatter_summary_plots.png"
+    spin_observables_plots : str = "MHA_train_no_mass_loss_spin_observables_plots.png"
+
+@dataclass
+class Main_Configuration:
+    data_config: Data_Configuration = field(default_factory=Data_Configuration)
+    model_config: Model_Configuration = field(default_factory=Model_Configuration)
+    train_config: Training_Configuration = field(default_factory=Training_Configuration)
+    data_saving: Data_Saving = field(default_factory=Data_Saving)
+
+control_panel = Main_Configuration()
+
+def display_config(control_panel):
+    print("\n" + "="*60)
+    print("CONTROL PANEL")
+    print("="*60)
+    
+    sections = {
+        'Data': control_panel.data_config,
+        'Model': control_panel.model_config,
+        'Training': control_panel.train_config
+    }
+    
+    for section_name, section in sections.items():
+        print(f"\n{section_name.upper()} CONFIGURATION")
+        for key, value in section.__dict__.items():
+            print(f"  {key}: {value}")
+
+display_config(control_panel)
+
+### ------------------------------ Load Preprocessed Data ------------------------------ ###
+
+class CustomDataset(Dataset):
+    def __init__(self, file_path):
+        with h5py.File(file_path, "r") as f:
+            self.X = torch.tensor(f["X"][:], dtype=torch.float32)
+            self.Y = torch.tensor(f["Y"][:], dtype=torch.float32)
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.Y[idx]
+
+# ------------------------------ Data Loaders ------------------------------ #
+
+def create_loader(split):
+    file_map = {
+        'train': control_panel.data_config.train_file,
+        'val': control_panel.data_config.val_file,
+        'test': control_panel.data_config.test_file
+    }
+    
+    dataset = CustomDataset(file_map[split])
+    
+    return DataLoader(
+        dataset,
+        batch_size=control_panel.data_config.batch_size,
+        shuffle=(split == 'train'),
+        num_workers=control_panel.data_config.num_workers,
+        pin_memory=control_panel.data_config.pin_memory
+    )
+
+train_loader, val_loader, test_loader = [create_loader(s) for s in ['train', 'val', 'test']]
+
+
+### ------------------------------ Model Architecture ------------------------------ ###
+
+# Define attention pooling mechanism 
+
+class AttentionPooling(nn.Module):
+    def __init__(self, d_model):
+        super().__init__()
+        self.attention = nn.Linear(d_model, 1)  # Learn token importance
+        
+    def forward(self, x):
+        # x: (batch, tokens, d_model)
+        weights = torch.softmax(self.attention(x), dim=1)  # (batch, tokens, 1)
+        pooled = (x * weights).sum(dim=1)  # (batch, d_model)
+        return pooled
+
+class Transformer(nn.Module):
+    def __init__(self, d_model=64, nhead=4, num_layers=4, dropout=0.1):
+        super().__init__()
+        
+        # Project each group to d_model
+        self.leading_order_jet_proj = nn.Linear(8, d_model)
+        self.second_order_jet_proj = nn.Linear(8, d_model)
+        self.third_order_jet_proj = nn.Linear(8, d_model)
+        self.fourth_order_jet_proj = nn.Linear(8, d_model)
+        self.muon_proj = nn.Linear(10, d_model)
+        self.electron_proj = nn.Linear(10, d_model)
+        self.met_proj = nn.Linear(2, d_model)
+        
+        # Transformer encoder
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=d_model * 4,
+            dropout=dropout,
+            batch_first=True
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        
+        self.pool = AttentionPooling(d_model)
+
+        # Classifier
+        self.classifier = nn.Sequential(
+            nn.Linear(d_model, 128),
+            nn.LayerNorm(128),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(128, 64),
+            nn.LayerNorm(64),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, 32),
+            nn.LayerNorm(32),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(32, 16)
+        )
+        
+    def forward(self, x):
+        # Split features into groups
+        leading_order_jet_features = x[:, 0:8]
+        second_order_jet_features = x[:, 8:16]
+        third_order_features = x[:, 16:24]
+        fourth_order_features = x[:, 24:32]
+        muon_features = x[:, 32:42]
+        electron_features = x[:, 42:52]
+        met_features = x[:, 52:54]
+        
+        # Project each group to token and concatenate
+        leading_order_jet_token = self.leading_order_jet_proj(leading_order_jet_features).unsqueeze(1)
+        second_order_jet_token = self.second_order_jet_proj(second_order_jet_features).unsqueeze(1)
+        third_order_jet_token = self.third_order_jet_proj(third_order_features).unsqueeze(1)
+        fourth_order_jet_token = self.fourth_order_jet_proj(fourth_order_features).unsqueeze(1)
+
+        muon_token = self.muon_proj(muon_features).unsqueeze(1)
+        electron_token = self.electron_proj(electron_features).unsqueeze(1)
+        met_token = self.met_proj(met_features).unsqueeze(1)
+        
+        tokens = torch.cat([leading_order_jet_token,
+                            second_order_jet_token,
+                            third_order_jet_token,
+                            fourth_order_jet_token,
+                            muon_token, 
+                            electron_token, 
+                            met_token], dim=1)
+        
+        # Transformer
+        tokens = self.transformer(tokens)
+        
+        # Attention pooling
+        pooled = self.pool(tokens)
+        
+        return self.classifier(pooled)
+
+model = Transformer(
+    d_model=control_panel.model_config.d_model,
+    nhead=control_panel.model_config.nhead,
+    num_layers=control_panel.model_config.num_layers,
+    dropout=control_panel.model_config.dropout
+    ).to(device)
+
+### ------------------------------ Early stopping mechanism ------------------------------ ###
+
+class EarlyStopping:
+    def __init__(self):
+        self.patience = control_panel.train_config.patience # Number of epochs to wait
+        self.min_delta = control_panel.train_config.min_delta # Minimum change
+        self.counter = 0
+        self.best_loss = float('inf')
+        self.early_stop = False
+
+    def __call__(self, avg_val_loss):
+        if self.best_loss - avg_val_loss > self.min_delta:
+            self.best_loss = avg_val_loss
+            self.counter = 0 
+        else:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+
+early_stopping = EarlyStopping()
+
+### ------------------------------ KL Divergence loss function ------------------------------ ###
+
+def distribution_considering_loss(pred, target, bins, hist_min, hist_max):
+        # Reshape target matrix
+        target_dim = pred.shape[1]
+        if isinstance(hist_min, (float, int)):
+            hist_min = pred.new_tensor([hist_min] * target_dim)
+        if isinstance(hist_max, (float, int)):
+            hist_max = pred.new_tensor([hist_max] * target_dim)
+
+        # Define max and min histogram
+        hist_min = hist_min.to(device=pred.device, dtype=pred.dtype).reshape(-1)
+        hist_max = hist_max.to(device=pred.device, dtype=pred.dtype).reshape(-1)
+
+        kl_sum = 0.0
+        for dim_idx in range(target_dim):
+            pred_dim = pred[:, dim_idx]
+            target_dim_values = target[:, dim_idx]
+
+            centers = torch.linspace(
+                hist_min[dim_idx], hist_max[dim_idx], bins,
+                device=pred.device, dtype=pred.dtype
+            )
+
+            # Define Gaussian kernels
+            pred_kernel = torch.exp(-0.5 * ((pred_dim.unsqueeze(1) - centers.unsqueeze(0)) / control_panel.train_config.kl_sigma) ** 2)
+            target_kernel = torch.exp(-0.5 * ((target_dim_values.unsqueeze(1) - centers.unsqueeze(0)) / control_panel.train_config.kl_sigma) ** 2)
+
+
+            pred_hist = pred_kernel.mean(dim=0) + control_panel.train_config.kl_eps
+            target_hist = target_kernel.mean(dim=0) + control_panel.train_config.kl_eps
+
+            pred_hist = pred_hist / pred_hist.sum()
+            target_hist = target_hist / target_hist.sum()
+
+            kl_sum = kl_sum + torch.sum(target_hist * (torch.log(target_hist) - torch.log(pred_hist)))
+
+        return kl_sum / target_dim
+
+### ------------------------------ Define loss func, optimiser, and scheduler ------------------------------ ###
+
+# Loss function
+loss = nn.HuberLoss()
+
+# Optimiser
+optimiser = torch.optim.AdamW(model.parameters(), lr=control_panel.train_config.learning_rate, weight_decay=control_panel.train_config.weight_decay)
+
+# Scheduler
+scheduler = ReduceLROnPlateau(
+    optimiser, 
+    mode='min',
+    factor=control_panel.train_config.scheduler_factor,
+    patience=control_panel.train_config.scheduler_patience,
+    min_lr=control_panel.train_config.scheduler_min_lr
+)
+
+### ------------------------------ Run Training Loop ------------------------------ ###
+
+# Track train losses
+losses = [] # Kinematic train loss
+kl_losses = []
+
+# Track validation losses
+val_losses = [] # Kinematic validation loss
+kl_val_losses = []
+
+# Track time
+times = []
+
+print("\n")
+print("="*60)
+print("Beginning Training Loop")
+print("="*60)
+
+# Run training loop
+for epoch in range(control_panel.train_config.num_epochs):
+    start_time = time.time()
+    model.train()
+    epoch_train_loss = 0.0
+    epoch_train_kl = 0.0
+    epoch_train_mass = 0.0
+
+    # Ramp up KL weight
+    current_kl_weight = control_panel.train_config.kl_weight_max * min(1.0, (epoch + 1) / control_panel.train_config.kl_ramp_epochs)
+
+    for batch_x, batch_y in train_loader:
+        batch_x = batch_x.to(device)
+        batch_y = batch_y.to(device)
+        
+        y_pred = model(batch_x)
+        
+        # Huber loss 
+        huber_loss = loss(y_pred, batch_y)
+        
+        # KL divergence loss
+        hist_min = batch_y.min().item() - 0.25
+        hist_max = batch_y.max().item() + 0.25
+        kl_loss = distribution_considering_loss(
+            y_pred,
+            batch_y,
+            bins=control_panel.train_config.kl_bins,
+            hist_min=hist_min,
+            hist_max=hist_max,
+        )
+
+        # Combined loss: Huber + KL 
+        total_loss = huber_loss + current_kl_weight * kl_loss 
+        
+        optimiser.zero_grad()
+        total_loss.backward()
+        optimiser.step()
+        
+        epoch_train_loss += total_loss.item()
+        epoch_train_kl += kl_loss.item()
+
+    avg_train_loss = epoch_train_loss / len(train_loader)
+    avg_train_kl = epoch_train_kl / len(train_loader)
+
+    losses.append(avg_train_loss)
+    kl_losses.append(avg_train_kl)
+
+    epoch_time = time.time() - start_time
+    times.append(epoch_time)
+
+    # Validation
+    model.eval()
+    epoch_val_loss = 0.0
+    epoch_val_kl = 0.0
+    epoch_val_mass = 0.0
+    with torch.no_grad():
+        for batch_x, batch_y in val_loader:
+            batch_x = batch_x.to(device)
+            batch_y = batch_y.to(device)
+            y_pred = model(batch_x)
+            
+            huber_loss = loss(y_pred, batch_y)
+            
+            hist_min = batch_y.min().item() - 0.25
+            hist_max = batch_y.max().item() + 0.25
+            kl_loss = distribution_considering_loss(
+                y_pred,
+                batch_y,
+                bins=control_panel.train_config.kl_bins,
+                hist_min=hist_min,
+                hist_max=hist_max,
+            )
+
+            # Combined loss: Huber + KL
+            total_loss = huber_loss + current_kl_weight * kl_loss
+            
+            epoch_val_loss += total_loss.item()
+            epoch_val_kl += kl_loss.item()       
+    
+    avg_val_loss = epoch_val_loss / len(val_loader)
+    avg_val_kl = epoch_val_kl / len(val_loader)
+
+    val_losses.append(avg_val_loss)
+    kl_val_losses.append(avg_val_kl)
+
+    scheduler.step(avg_val_loss)
+
+    if (epoch + 1) % 1 == 0:
+        print(f"Epoch {epoch+1}/{control_panel.train_config.num_epochs} | Train Loss: {avg_train_loss:.4f} (KL: {avg_train_kl:.4f}) | Val Loss: {avg_val_loss:.4f} (KL: {avg_val_kl:.4f}) | Train - Val Loss Diff : {np.abs(avg_val_loss - avg_train_loss):.4f} | Epoch Time: {epoch_time:.2f}s | Total Time: {np.sum(times):.2f}s")
+
+    if epoch >= control_panel.train_config.min_early_stop:
+        early_stopping(avg_val_loss)
+        if early_stopping.early_stop:
+            print("Early stopping triggered.")
+            break
+    
+### ------------------------------ Evaluate Model ------------------------------ ###
+
+# Load scaler information
+with h5py.File(control_panel.data_config.scaler_file, "r") as f:
+    scaler_Y_mean = f["Y_mean"][:]
+    scaler_Y_scale = f["Y_scale"][:]
+
+# Load test targets
+with h5py.File(control_panel.data_config.test_file, "r") as f:
+    Y_test_scaled = f["Y"][:]
+
+# Evaluate the model on test data
+model.eval()
+list_of_predictions = []
+with torch.no_grad():
+    for inputs, targets in test_loader:
+        inputs = inputs.to(device)
+        outputs = model(inputs)
+        list_of_predictions.append(outputs.cpu())
+
+Y_pred = torch.cat(list_of_predictions).numpy()
+
+# Unscale from 0-1 into GeV
+Y_pred_unscaled = Y_pred * scaler_Y_scale + scaler_Y_mean
+Y_test_unscaled = Y_test_scaled * scaler_Y_scale + scaler_Y_mean
+
+### ------------------------------ Calculate KL Divergence ------------------------------ ###
+
+
+def kl_divergence(pred, target, bins=100):
+    # Identify common range
+    min_val = min(pred.min(), target.min())
+    max_val = max(pred.max(), target.max())
+    
+    # Create histograms using bins and common range
+    pred_hist, _ = np.histogram(pred, bins=bins, range=(min_val, max_val))
+    target_hist, _ = np.histogram(target, bins=bins, range=(min_val, max_val))
+    
+    # Convert to probabilities
+    pred_probs = pred_hist / (pred_hist.sum() + 1e-10) # Addition of 1e-10 stops any divisions by 0
+    target_probs = target_hist / (target_hist.sum() + 1e-10)
+    
+    # Avoid log(0)
+    pred_probs = np.clip(pred_probs, 1e-10, 1.0)
+    target_probs = np.clip(target_probs, 1e-10, 1.0)
+    
+    # KL divergence: target || pred
+    kl = np.sum(target_probs * np.log(target_probs / pred_probs))
+    
+    return kl
+
+def bootstrap_kl_divergence(pred, target, n_bootstrap=1000, bins=100):
+    
+    kl_original = kl_divergence(pred, target, bins)
+    
+    # Combine samples for resampling
+    combined = np.concatenate([pred, target])
+    n_pred = len(pred)
+    n_target = len(target)
+    
+    # Bootstrap resampling
+    kl_bootstrap = []
+    for _ in range(n_bootstrap):
+        # Resample with replacement
+        pred_resample = np.random.choice(combined, size=n_pred, replace=True)
+        target_resample = np.random.choice(combined, size=n_target, replace=True)
+        
+        # Calculate KL on resampled data
+        kl_bootstrap.append(kl_divergence(pred_resample, target_resample, bins))
+    
+    # Calculate statistics, chopping off lower 2.5% and upper 2.5%
+    kl_std = np.std(kl_bootstrap)
+    ci_lower = np.percentile(kl_bootstrap, 2.5)
+    ci_upper = np.percentile(kl_bootstrap, 97.5)
+    
+    return kl_original, kl_std, (ci_lower, ci_upper), kl_bootstrap
+
+### ------------------------------ Display Metrics ------------------------------ ###
+
+# Store target feature names in an array
+target_names = ['top_px', 'top_py', 'top_pz', 'top_E',
+                 'antitop_px', 'antitop_py', 'antitop_pz', 'antitop_E',
+                 'lepton_plus_px', 'lepton_plus_py', 'lepton_plus_pz', 'lepton_plus_E',
+                 'lepton_minus_px', 'lepton_minus_py', 'lepton_minus_pz', 'lepton_minus_E']
+
+# Calculate MSE, R², and MAE
+
+print("\n")
+print("="*60)
+print("TARGET FEATURE METRICS")
+print("="*60)
+
+r2_per_dim = []
+
+for i in range(16):
+    mse = mean_squared_error(Y_test_unscaled[:, i], Y_pred_unscaled[:, i])
+    r2 = r2_score(Y_test_unscaled[:, i], Y_pred_unscaled[:, i])
+    r2_per_dim.append(r2)
+    mae = mean_absolute_error(Y_test_unscaled[:,i], Y_pred_unscaled[:,i])
+    print(f"{target_names[i]}: MSE={mse:.4f}, R²={r2:.4f}, MAE = {mae:.4f}\n")
+
+# Calculate Bootstrap Divergence 
+
+print("="*60)
+for i, name in enumerate(target_names):
+    kl_feat, std_feat, ci_feat, _ = bootstrap_kl_divergence(Y_pred_unscaled[:, i], Y_test_unscaled[:, i], n_bootstrap=1000, bins=100)
+    print(f"{name}: KL = {kl_feat:.4f} ± {std_feat:.4f}")
+print("="*60)
+
+### ------------------------------ Plot Loss Curve and R^2 Plots ------------------------------ #
+
+fig1, axes1 = plt.subplots(1, 2, figsize=(16, 6))
+
+# Loss curve
+axes1[0].plot(losses, label='Train Loss')
+axes1[0].plot(val_losses, label='Validation Loss')
+axes1[0].set_xlabel('Epoch')
+axes1[0].set_ylabel('Loss')
+axes1[0].set_title('Training and Validation Loss')
+axes1[0].legend()
+axes1[0].grid(True, alpha=0.3)
+
+# R² bar chart (16 bars)
+bars = axes1[1].bar(range(16), r2_per_dim, color='blue', edgecolor='black')
+axes1[1].set_xticks(range(16))
+axes1[1].set_xticklabels(target_names, rotation=90, ha='center')
+axes1[1].set_ylabel('R-Squared')
+axes1[1].set_title('R-Squared per Feature')
+axes1[1].set_ylim([-0.1, 1.0])
+axes1[1].grid(True, alpha=0.3, axis='y')
+for bar, val in zip(bars, r2_per_dim):
+    axes1[1].text(bar.get_x() + bar.get_width()/2, val + 0.01,
+                  f'{val:.3f}', ha='center', va='bottom', fontsize=8)
+
+plt.tight_layout()
+plt.savefig(control_panel.data_saving.loss_curve_r2_summary_plots)
+
+### ------------------------------ Plot Target Feature Distribution and Resolution ------------------------------ #
+
+fig2, axes2 = plt.subplots(4, 4, figsize=(16, 12))
+
+for i in range(16):
+    row = i // 4
+    col = i % 4
+    ax = axes2[row, col]
+    
+    ax.hist(Y_test_unscaled[:, i], bins=100, density=True, histtype='step',
+            label='True', color='blue', linewidth=1.5)
+    ax.hist(Y_pred_unscaled[:, i], bins=100, density=True, histtype='step',
+            label='Pred', color='red', linewidth=1.5)
+    ax.set_title(target_names[i], fontsize=10)
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig(control_panel.data_saving.distribution_summary_plots)
+
+### ------------------------------ Plot Target Feature Resolution Plots ------------------------------ #
+
+fig3, axes3 = plt.subplots(4, 4, figsize=(16, 12))
+
+for i in range(16):
+    row = i // 4
+    col = i % 4
+    ax = axes3[row, col]
+    
+    residuals = Y_pred_unscaled[:, i] - Y_test_unscaled[:, i]
+    ax.hist(residuals, bins=50, color='red', alpha=0.7, edgecolor='black')
+    ax.axvline(0, color='black', linestyle='--', linewidth=2, label='Perfect')
+    ax.axvline(np.mean(residuals), color='blue', linestyle='-', linewidth=2,
+               label=f'μ={np.mean(residuals):.2f}')
+    ax.set_title(target_names[i], fontsize=10)
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig(control_panel.data_saving.resolution_summary_plots)
+
+### ------------------------------ Plot Target Feature Scatter Plots ------------------------------ #
+
+fig4, axes4 = plt.subplots(4, 4, figsize=(16, 12))
+
+for i in range(16):
+    row = i // 4
+    col = i % 4
+    ax = axes4[row, col]
+    
+    ax.scatter(Y_test_unscaled[:, i], Y_pred_unscaled[:, i],
+               alpha=0.1, s=1, color='blue')
+    min_val = min(Y_test_unscaled[:, i].min(), Y_pred_unscaled[:, i].min())
+    max_val = max(Y_test_unscaled[:, i].max(), Y_pred_unscaled[:, i].max())
+    ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect')
+    ax.set_xlabel('True', fontsize=8)
+    ax.set_ylabel('Pred', fontsize=8)
+    r2 = r2_per_dim[i]
+    ax.set_title(f'{target_names[i]}\nR² = {r2:.3f}', fontsize=10)
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=8)
+
+plt.tight_layout()
+plt.savefig(control_panel.data_saving.scatter_summary_plots)
+
+### ------------------------------ Spin Observable Calculation Functions ------------------------------ #
+
+
+def boost(top,anti_top,leptonP,leptonM):
+
+    # Build ttbar system
+    ttbar = top + anti_top 
+
+    # Boost tops lab --> ttbar_CoM
+    top_in_CoM      = top.boostCM_of(ttbar)
+    antitop_in_CoM  = anti_top.boostCM_of(ttbar) 
+
+    # Boost leptons lab --> ttbar_CoM --> parent_tops'_CoM
+    leptonP_in_CoM     = leptonP.boostCM_of(ttbar)
+    leptonM_in_CoM     = leptonM.boostCM_of(ttbar)
+    leptonP_in_top     = leptonP_in_CoM.boostCM_of(top_in_CoM)
+    leptonM_in_antitop = leptonM_in_CoM.boostCM_of(antitop_in_CoM)
+
+    # Compute the unit 3-vector directions
+    Kdirection        = top_in_CoM.to_beta3().unit()
+    leptonP_direction = leptonP_in_top.to_beta3().unit()
+    leptonM_direction = leptonM_in_antitop.to_beta3().unit()
+
+    return Kdirection, leptonP_direction, leptonM_direction
+
+
+def helicity_basis_observables(Kdirection, leptonP_direction, leptonM_direction):
+
+    # Kinematics
+    z     = vector.obj(x=0,y=0,z=1)
+    cos_T = z.dot(Kdirection)
+    sin_T = (1 - cos_T**2)**0.5
+    mask = 1*(cos_T > 0) -1*(cos_T < 0)
+
+    # Helicity basis observables
+    cos_K_plus  = Kdirection.dot(leptonP_direction)
+    cos_K_minus = -Kdirection.dot(leptonM_direction) 
+
+    Ndirection = z.cross(Kdirection)/sin_T
+    cos_N_plus  = mask*Ndirection.dot(leptonP_direction)
+    cos_N_minus = -mask*Ndirection.dot(leptonM_direction) 
+
+    Rdirection  =  1/sin_T * (z - cos_T*Kdirection)
+    cos_R_plus  = mask*Rdirection.dot(leptonP_direction)
+    cos_R_minus = -mask*Rdirection.dot(leptonM_direction) 
+
+    cos_phi     = leptonP_direction.dot(leptonM_direction)
+
+    helicity_observables = ak.zip({
+    "cos_K_plus"  :  cos_K_plus,
+    "cos_K_minus" :  cos_K_minus,
+    "cos_N_plus"  :  cos_N_plus,
+    "cos_N_minus" :  cos_N_minus,
+    "cos_R_plus"  :  cos_R_plus,
+    "cos_R_minus" :  cos_R_minus,
+    "cos_phi"     :  cos_phi 
+    }, depth_limit=1, with_name="Event")
+
+    return helicity_observables
+
+### ------------------------------ Spin Observable Calculation ------------------------------ #
+
+# Convert NumPy to Awkward arrays
+Y_pred_awk = ak.from_numpy(Y_pred_unscaled)
+Y_test_awk = ak.from_numpy(Y_test_unscaled)
+
+# Predicted vectors
+top_pred = vector.Array(
+    ak.zip({
+        'px': Y_pred_awk[:, 0],
+        'py': Y_pred_awk[:, 1],
+        'pz': Y_pred_awk[:, 2],
+        'E': Y_pred_awk[:,3]
+    })
+)
+
+antitop_pred = vector.Array(
+    ak.zip({
+        'px': Y_pred_awk[:, 4],
+        'py': Y_pred_awk[:, 5],
+        'pz': Y_pred_awk[:, 6],
+        'E': Y_pred_awk[:,7]
+    })
+)
+
+lepton_plus_pred = vector.Array(
+    ak.zip({
+        'px': Y_pred_awk[:, 8],
+        'py': Y_pred_awk[:, 9],
+        'pz': Y_pred_awk[:, 10],
+        'E': Y_pred_awk[:,11]
+    })
+)
+
+lepton_minus_pred = vector.Array(
+    ak.zip({
+        'px': Y_pred_awk[:, 12],
+        'py': Y_pred_awk[:, 13],
+        'pz': Y_pred_awk[:, 14],
+        'E': Y_pred_awk[:,15]
+    })
+)
+
+# True vectors
+top_true = vector.Array(
+    ak.zip({
+        'px': Y_test_awk[:, 0],
+        'py': Y_test_awk[:, 1],
+        'pz': Y_test_awk[:, 2],
+        'E': Y_test_awk[:,3]
+    })
+)
+
+antitop_true = vector.Array(
+    ak.zip({
+        'px': Y_test_awk[:, 4],
+        'py': Y_test_awk[:, 5],
+        'pz': Y_test_awk[:, 6],
+        'E': Y_test_awk[:,7]
+    })
+)
+
+lepton_plus_true = vector.Array(
+    ak.zip({
+        'px': Y_test_awk[:, 8],
+        'py': Y_test_awk[:, 9],
+        'pz': Y_test_awk[:, 10],
+        'E': Y_test_awk[:,11]
+    })
+)
+
+lepton_minus_true = vector.Array(
+    ak.zip({
+        'px': Y_test_awk[:, 12],
+        'py': Y_test_awk[:, 13],
+        'pz': Y_test_awk[:, 14],
+        'E': Y_test_awk[:,15]
+    })
+)
+
+# Calculate Spin Observables
+
+dic_of_spin_observables_pred = helicity_basis_observables(*boost(top_pred,
+                                                                antitop_pred,
+                                                                lepton_plus_pred,
+                                                                lepton_minus_pred))
+
+dic_of_spin_observables_true = helicity_basis_observables(*boost(top_true,
+                                                                antitop_true,
+                                                                lepton_plus_true,
+                                                                lepton_minus_true))
+
+obs_fields = ['cos_K_plus','cos_K_minus','cos_N_plus','cos_N_minus','cos_R_plus','cos_R_minus','cos_phi']
+
+pred_spin_observables = np.column_stack([ak.to_numpy(dic_of_spin_observables_pred[field]) for field in obs_fields])
+
+true_spin_observables = np.column_stack([ak.to_numpy(dic_of_spin_observables_true[field]) for field in obs_fields])
+
+
+### ------------------------------ Calculate Spin Observable Metrics ------------------------------ #
+
+# Compute metrics
+print("\n" + "="*60)
+print("SPIN OBSERVABLE METRICS")
+print("="*60)
+
+r2_spin = []
+mse_spin = []
+mae_spin = []
+kl_spin = []
+
+for i, name in enumerate(obs_fields):
+    mse = mean_squared_error(true_spin_observables[:, i], pred_spin_observables[:, i])
+    r2 = r2_score(true_spin_observables[:, i], pred_spin_observables[:, i])
+    mae = mean_absolute_error(true_spin_observables[:, i], pred_spin_observables[:, i])
+    mse_spin.append(mse)
+    r2_spin.append(r2)
+    mae_spin.append(mae)
+    
+    # KL divergence with bootstrap
+    kl_val, kl_std, ci, _ = bootstrap_kl_divergence(
+        pred_spin_observables[:, i],
+        true_spin_observables[:, i],
+        n_bootstrap=1000,
+        bins=100
+    )
+    kl_spin.append((kl_val, kl_std))
+    
+    print(f"{name}: MSE={mse:.4f}, R²={r2:.4f}, MAE={mae:.4f}, KL={kl_val:.4f} ± {kl_std:.4f}")
+print("="*60)
+
+### ------------------------------ Plot Spin Observable Metrics ------------------------------ #
+
+fig, axes = plt.subplots(7, 3, figsize=(15, 25))  # 7 rows, 3 columns
+
+for i, name in enumerate(obs_fields):
+    # Distribution (true vs pred)
+    ax0 = axes[i, 0]
+    ax0.hist(true_spin_observables[:, i], bins=100, density=True,
+             histtype='step', label='True', color='blue', linewidth=1.5)
+    ax0.hist(pred_spin_observables[:, i], bins=100, density=True,
+             histtype='step', label='Pred', color='red', linewidth=1.5)
+    ax0.set_title(f'{name} Distribution', fontsize=10)
+    ax0.legend(fontsize=8)
+    ax0.grid(True, alpha=0.3)
+
+    # Scatter (true vs pred)
+    ax1 = axes[i, 1]
+    ax1.scatter(true_spin_observables[:, i], pred_spin_observables[:, i],
+                alpha=0.1, s=1, color='blue')
+    min_val = min(true_spin_observables[:, i].min(), pred_spin_observables[:, i].min())
+    max_val = max(true_spin_observables[:, i].max(), pred_spin_observables[:, i].max())
+    ax1.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect')
+    ax1.set_xlabel('True', fontsize=8)
+    ax1.set_ylabel('Pred', fontsize=8)
+    ax1.set_title(f'{name}\nR² = {r2_spin[i]:.3f}', fontsize=10)
+    ax1.legend(fontsize=8)
+    ax1.grid(True, alpha=0.3)
+
+    # Resolution (pred - true)
+    ax2 = axes[i, 2]
+    residuals = pred_spin_observables[:, i] - true_spin_observables[:, i]
+    ax2.hist(residuals, bins=50, color='red', alpha=0.7, edgecolor='black')
+    ax2.axvline(0, color='black', linestyle='--', linewidth=2, label='Perfect')
+    ax2.axvline(np.mean(residuals), color='blue', linestyle='-', linewidth=2,
+                label=f'μ={np.mean(residuals):.3f}')
+    ax2.set_title(f'{name} Resolution', fontsize=10)
+    ax2.legend(fontsize=8)
+    ax2.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig(control_panel.data_saving.spin_observables_plots)
+plt.show()

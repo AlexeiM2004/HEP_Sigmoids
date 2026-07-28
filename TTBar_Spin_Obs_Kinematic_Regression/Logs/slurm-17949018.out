@@ -1,0 +1,21 @@
+# ---------- BATCH RECIEPT ---------- #
+Job ID: 17949018
+Job Name: scratch_preprocess.sh
+Submit Time: Tue 28 Jul 10:24:09 BST 2026
+Job description: Data preprocessing for kinematic regression of spin observables with mass.
+Node: node882.csf3.man.alces.network
+User: m64196am
+Partition: gpuL
+GPUs: 1
+Working Directory: /mnt/iusers01/fse-ugpgt01/phy01/m64196am
+# ----------------------------------- #
+
+File size: 0.32 GB
+Keeping 54 features out of 126
+X shape: (494617, 54)
+Target shape: (494617, 16)
+Mass shape : (494617, 2)
+Saved to kinematic_withM_spin_observable_features_train.h5
+Saved to kinematic_withM_spin_observable_features_val.h5
+Saved to kinematic_withM_spin_observable_features_test.h5
+Saved scaler info to kinematic_withM_spin_observable_features_scaler_info.h5
