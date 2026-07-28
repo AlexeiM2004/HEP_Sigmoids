@@ -367,8 +367,7 @@ scheduler = ReduceLROnPlateau(
 
 ### ------------------------------ Run Training Loop ------------------------------ ###
 
-# Load in mass scaling dat
-
+# Load in mass scaling data
 with h5py.File("kinematic_features_scaler_info.h5", "r") as f:
     scaler_Y_mean = torch.tensor(f["Y_mean"][:], device=device, dtype=torch.float32)
     scaler_Y_scale = torch.tensor(f["Y_scale"][:], device=device, dtype=torch.float32)
@@ -674,7 +673,7 @@ ttbar_true = top_true + antitop_true
 M_pred = ttbar_pred.mass
 M_true = ttbar_true.mass
 
-### ------------------------------ Invariant Mass Plots ------------------------------ #
+### ------------------------------ Plot Invariant Mass ------------------------------ #
 
 fig4, axes4 = plt.subplots(1, 3, figsize=(18, 6))
 

@@ -73,11 +73,14 @@ class Training_Configuration:
     weight_decay : float = 0.01
 
     # KL divergence settings
-    kl_weight_max: float = 0.05
+    kl_weight_max: float = 0.1
     kl_ramp_epochs: int = 15
     kl_bins: int = 100
     kl_sigma: float = 0.20
     kl_eps: float = 1e-8
+    
+    # Mass loss settings
+    mass_loss_weight: float = 0.0001
 
     # Scheduler settings
     scheduler_factor: float = 0.5
@@ -126,12 +129,13 @@ class CustomDataset(Dataset):
         with h5py.File(file_path, "r") as f:
             self.X = torch.tensor(f["X"][:], dtype=torch.float32)
             self.Y = torch.tensor(f["Y"][:], dtype=torch.float32)
+            self.M = torch.tensor(f["M"][:], dtype=torch.float32)
 
     def __len__(self):
         return len(self.X)
 
     def __getitem__(self, idx):
-        return self.X[idx], self.Y[idx]
+        return self.X[idx], self.Y[idx], self.M[idx]
 
 # ------------------------------ Data Loaders ------------------------------ #
 
@@ -352,6 +356,7 @@ def distribution_considering_loss(pred, target, bins, hist_min, hist_max):
 
 # Loss function
 loss = nn.HuberLoss()
+mass_loss_func = nn.L1Loss()
 
 # Optimiser
 optimiser = torch.optim.AdamW(model.parameters(), lr=control_panel.train_config.learning_rate, weight_decay=control_panel.train_config.weight_decay)
@@ -367,8 +372,7 @@ scheduler = ReduceLROnPlateau(
 
 ### ------------------------------ Run Training Loop ------------------------------ ###
 
-# Load in mass scaling dat
-
+# Load in mass scaling data
 with h5py.File("kinematic_features_scaler_info.h5", "r") as f:
     scaler_Y_mean = torch.tensor(f["Y_mean"][:], device=device, dtype=torch.float32)
     scaler_Y_scale = torch.tensor(f["Y_scale"][:], device=device, dtype=torch.float32)
@@ -376,10 +380,12 @@ with h5py.File("kinematic_features_scaler_info.h5", "r") as f:
 # Track train losses
 losses = [] # Kinematic train loss
 kl_losses = []
+mass_losses = []
 
 # Track validation losses
 val_losses = [] # Kinematic validation loss
 kl_val_losses = []
+mass_val_losses = []
 
 # Track time
 times = []
@@ -395,13 +401,15 @@ for epoch in range(control_panel.train_config.num_epochs):
     model.train()
     epoch_train_loss = 0.0
     epoch_train_kl = 0.0
+    epoch_train_mass = 0.0
 
     # Ramp up KL weight
     current_kl_weight = control_panel.train_config.kl_weight_max * min(1.0, (epoch + 1) / control_panel.train_config.kl_ramp_epochs)
 
-    for batch_x, batch_y in train_loader:
+    for batch_x, batch_y, batch_m in train_loader:
         batch_x = batch_x.to(device)
         batch_y = batch_y.to(device)
+        batch_m = batch_m.to(device)
         
         y_pred = model(batch_x)
         
@@ -419,8 +427,47 @@ for epoch in range(control_panel.train_config.num_epochs):
             hist_max=hist_max,
         )
 
+        # Unscale y pred, true targets, and m 
+        y_pred_unscaled = y_pred * scaler_Y_scale + scaler_Y_mean
+        batch_y_unscaled = batch_y * scaler_Y_scale + scaler_Y_mean
+
+        top_px_pred, top_py_pred, top_pz_pred = y_pred_unscaled[:, 0], y_pred_unscaled[:, 1], y_pred_unscaled[:, 2]
+        top_E_pred = y_pred_unscaled[:, 6]
+
+        antitop_px_pred, antitop_py_pred, antitop_pz_pred = y_pred_unscaled[:, 3], y_pred_unscaled[:, 4], y_pred_unscaled[:, 5]
+        antitop_E_pred = y_pred_unscaled[:, 7]
+
+        top_px_true, top_py_true, top_pz_true = batch_y_unscaled[:, 0], batch_y_unscaled[:, 1], batch_y_unscaled[:, 2]
+        top_E_true = batch_y_unscaled[:, 6]
+
+        antitop_px_true, antitop_py_true, antitop_pz_true = batch_y_unscaled[:, 3], batch_y_unscaled[:, 4], batch_y_unscaled[:, 5]
+        antitop_E_true = batch_y_unscaled[:, 7]
+
+        top_m_pred = torch.sqrt(torch.clamp(top_E_pred**2 - (top_px_pred**2 + top_py_pred**2 + top_pz_pred**2), min=1e-6))
+        antitop_m_pred = torch.sqrt(torch.clamp(antitop_E_pred**2 - (antitop_px_pred**2 + antitop_py_pred**2 + antitop_pz_pred**2), min=1e-6))
+
+        ttbar_px_pred = top_px_pred + antitop_px_pred
+        ttbar_py_pred = top_py_pred + antitop_py_pred
+        ttbar_pz_pred = top_pz_pred + antitop_pz_pred
+        ttbar_E_pred  = top_E_pred + antitop_E_pred
+
+        ttbar_px_true = top_px_true + antitop_px_true
+        ttbar_py_true = top_py_true + antitop_py_true
+        ttbar_pz_true = top_pz_true + antitop_pz_true
+        ttbar_E_true  = top_E_true + antitop_E_true
+
+        m_ttbar_pred = torch.sqrt(torch.clamp(ttbar_E_pred**2 - (ttbar_px_pred**2 + ttbar_py_pred**2 + ttbar_pz_pred**2), min=1e-6))
+        m_ttbar_true = torch.sqrt(torch.clamp(ttbar_E_true**2 - (ttbar_px_true**2 + ttbar_py_true**2 + ttbar_pz_true**2), min=1e-6))
+
+        individual_mass_loss = mass_loss_func(top_m_pred, batch_m[:, 0]) + mass_loss_func(antitop_m_pred, batch_m[:, 1])
+
+        system_mass_loss = mass_loss_func(m_ttbar_pred, m_ttbar_true)
+
+        # Sum of both constraints
+        mass_loss = individual_mass_loss + system_mass_loss
+
         # Combined loss: Huber + KL + Mass loss
-        total_loss = huber_loss + current_kl_weight * kl_loss
+        total_loss = huber_loss + current_kl_weight * kl_loss + mass_loss * control_panel.train_config.mass_loss_weight
         
         optimiser.zero_grad()
         total_loss.backward()
@@ -428,12 +475,15 @@ for epoch in range(control_panel.train_config.num_epochs):
         
         epoch_train_loss += total_loss.item()
         epoch_train_kl += kl_loss.item()
+        epoch_train_mass += mass_loss.item()
 
     avg_train_loss = epoch_train_loss / len(train_loader)
     avg_train_kl = epoch_train_kl / len(train_loader)
+    avg_train_mass = epoch_train_mass / len(train_loader)
 
     losses.append(avg_train_loss)
     kl_losses.append(avg_train_kl)
+    mass_losses.append(avg_train_mass)
 
     epoch_time = time.time() - start_time
     times.append(epoch_time)
@@ -444,9 +494,10 @@ for epoch in range(control_panel.train_config.num_epochs):
     epoch_val_kl = 0.0
     epoch_val_mass = 0.0
     with torch.no_grad():
-        for batch_x, batch_y in val_loader:
+        for batch_x, batch_y, batch_m in val_loader:
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
+            batch_m = batch_m.to(device)
             y_pred = model(batch_x)
             
             huber_loss = loss(y_pred, batch_y)
@@ -461,22 +512,64 @@ for epoch in range(control_panel.train_config.num_epochs):
                 hist_max=hist_max,
             )
 
+            # Unscale y pred, true targets, and m 
+            y_pred_unscaled = y_pred * scaler_Y_scale + scaler_Y_mean
+            batch_y_unscaled = batch_y * scaler_Y_scale + scaler_Y_mean
+
+            top_px_pred, top_py_pred, top_pz_pred = y_pred_unscaled[:, 0], y_pred_unscaled[:, 1], y_pred_unscaled[:, 2]
+            top_E_pred = y_pred_unscaled[:, 6]
+
+            antitop_px_pred, antitop_py_pred, antitop_pz_pred = y_pred_unscaled[:, 3], y_pred_unscaled[:, 4], y_pred_unscaled[:, 5]
+            antitop_E_pred = y_pred_unscaled[:, 7]
+
+            top_px_true, top_py_true, top_pz_true = batch_y_unscaled[:, 0], batch_y_unscaled[:, 1], batch_y_unscaled[:, 2]
+            top_E_true = batch_y_unscaled[:, 6]
+
+            antitop_px_true, antitop_py_true, antitop_pz_true = batch_y_unscaled[:, 3], batch_y_unscaled[:, 4], batch_y_unscaled[:, 5]
+            antitop_E_true = batch_y_unscaled[:, 7]
+
+            top_m_pred = torch.sqrt(torch.clamp(top_E_pred**2 - (top_px_pred**2 + top_py_pred**2 + top_pz_pred**2), min=1e-6))
+            antitop_m_pred = torch.sqrt(torch.clamp(antitop_E_pred**2 - (antitop_px_pred**2 + antitop_py_pred**2 + antitop_pz_pred**2), min=1e-6))
+
+            ttbar_px_pred = top_px_pred + antitop_px_pred
+            ttbar_py_pred = top_py_pred + antitop_py_pred
+            ttbar_pz_pred = top_pz_pred + antitop_pz_pred
+            ttbar_E_pred  = top_E_pred + antitop_E_pred
+
+            ttbar_px_true = top_px_true + antitop_px_true
+            ttbar_py_true = top_py_true + antitop_py_true
+            ttbar_pz_true = top_pz_true + antitop_pz_true
+            ttbar_E_true  = top_E_true + antitop_E_true
+
+            m_ttbar_pred = torch.sqrt(torch.clamp(ttbar_E_pred**2 - (ttbar_px_pred**2 + ttbar_py_pred**2 + ttbar_pz_pred**2), min=1e-6))
+            m_ttbar_true = torch.sqrt(torch.clamp(ttbar_E_true**2 - (ttbar_px_true**2 + ttbar_py_true**2 + ttbar_pz_true**2), min=1e-6))
+
+            individual_mass_loss = mass_loss_func(top_m_pred, batch_m[:, 0]) + mass_loss_func(antitop_m_pred, batch_m[:, 1])
+
+            system_mass_loss = mass_loss_func(m_ttbar_pred, m_ttbar_true)
+
+            # Sum of both constraints
+            mass_loss = individual_mass_loss + system_mass_loss
+
             # Combined loss: Huber + KL + Mass loss
-            total_loss = huber_loss + current_kl_weight * kl_loss
+            total_loss = huber_loss + current_kl_weight * kl_loss + mass_loss * control_panel.train_config.mass_loss_weight
             
             epoch_val_loss += total_loss.item()
-            epoch_val_kl += kl_loss.item()      
+            epoch_val_kl += kl_loss.item()
+            epoch_val_mass += mass_loss.item()            
     
     avg_val_loss = epoch_val_loss / len(val_loader)
     avg_val_kl = epoch_val_kl / len(val_loader)
+    avg_val_mass = epoch_val_mass / len(val_loader)
 
     val_losses.append(avg_val_loss)
     kl_val_losses.append(avg_val_kl)
+    mass_val_losses.append(avg_val_mass)
 
     scheduler.step(avg_val_loss)
 
     if (epoch + 1) % 1 == 0:
-        print(f"Epoch {epoch+1}/{control_panel.train_config.num_epochs} | Train Loss: {avg_train_loss:.4f} (KL: {avg_train_kl:.4f}) | Val Loss: {avg_val_loss:.4f} (KL: {avg_val_kl:.4f}) | Train - Val Loss Diff : {np.abs(avg_val_loss - avg_train_loss):.4f} | Epoch Time: {epoch_time:.2f}s | Total Time: {np.sum(times):.2f}s")
+        print(f"Epoch {epoch+1}/{control_panel.train_config.num_epochs} | Train Loss: {avg_train_loss:.4f} (KL: {avg_train_kl:.4f}) | Val Loss: {avg_val_loss:.4f} (KL: {avg_val_kl:.4f}) | Train - Val Loss Diff : {np.abs(avg_val_loss - avg_train_loss):.4f} | Mass Train Loss : {avg_train_mass:.4f} | Mass Val Loss : {avg_val_mass:.4f} | Epoch Time: {epoch_time:.2f}s | Total Time: {np.sum(times):.2f}s")
 
     if epoch >= control_panel.train_config.min_early_stop:
         early_stopping(avg_val_loss)
@@ -501,7 +594,7 @@ with h5py.File("kinematic_features_test.h5", "r") as f:
 model.eval()
 list_of_predictions = []
 with torch.no_grad():
-    for inputs, targets in test_loader:
+    for inputs, targets, masses in test_loader:
         inputs = inputs.to(device)
         outputs = model(inputs)
         list_of_predictions.append(outputs.cpu())
@@ -540,6 +633,8 @@ axes1[0].plot(losses, label='Kinematic Train Loss')
 axes1[0].plot(val_losses, label='Kinematic Validation Loss')
 axes1[0].plot(kl_losses, label='KL Train Loss')
 axes1[0].plot(kl_val_losses, label='KL Validation Loss')
+axes1[0].plot(mass_losses, label='Mass Train Loss')
+axes1[0].plot(mass_val_losses, label='Mass Validation Loss')
 axes1[0].set_xlabel('Epoch')
 axes1[0].set_ylabel('Loss')
 axes1[0].set_title('Training and Validation Loss')
@@ -674,7 +769,7 @@ ttbar_true = top_true + antitop_true
 M_pred = ttbar_pred.mass
 M_true = ttbar_true.mass
 
-### ------------------------------ Invariant Mass Plots ------------------------------ #
+### ------------------------------ Plot Invariant Mass ------------------------------ #
 
 fig4, axes4 = plt.subplots(1, 3, figsize=(18, 6))
 

@@ -4,7 +4,7 @@
 # Loads prepared and preprocessed data from 4 separate files (train,test,val,scaler)
 # Converts X and target into tensors using a custom dataset
 # Employs dataloaders for batching, with num workers = 4
-# Defines MLA transformer model architecture with attention pooling
+# Defines MHA transformer model architecture with attention pooling
 # Defines an early stopping mechanism
 # Defines loss function (Huber loss), optimiser (Wadam) and scheduler (reduceLRonplateu)
 # Runs training loop
@@ -57,8 +57,7 @@ class Model_Configuration:
     d_model : int = 64
     nhead : int = 4
     num_layers : int = 4
-    dropout : float = 0.1
-    latent_dim: int = 16 
+    dropout : float = 0.1 
 
 @dataclass
 class Training_Configuration:
@@ -73,11 +72,15 @@ class Training_Configuration:
     weight_decay : float = 0.01
 
     # KL divergence settings
-    kl_weight_max: float = 0.05
+    kl_weight_max: float = 0.1
     kl_ramp_epochs: int = 15
     kl_bins: int = 100
     kl_sigma: float = 0.20
     kl_eps: float = 1e-8
+    
+    # Mass loss settings
+    mass_loss_weight: float = 0.0001
+
 
     # Scheduler settings
     scheduler_factor: float = 0.5
@@ -126,12 +129,13 @@ class CustomDataset(Dataset):
         with h5py.File(file_path, "r") as f:
             self.X = torch.tensor(f["X"][:], dtype=torch.float32)
             self.Y = torch.tensor(f["Y"][:], dtype=torch.float32)
+            self.M = torch.tensor(f["M"][:], dtype=torch.float32)
 
     def __len__(self):
         return len(self.X)
 
     def __getitem__(self, idx):
-        return self.X[idx], self.Y[idx]
+        return self.X[idx], self.Y[idx], self.M[idx]
 
 # ------------------------------ Data Loaders ------------------------------ #
 
@@ -162,43 +166,26 @@ train_loader, val_loader, test_loader = [create_loader(s) for s in ['train', 'va
 class AttentionPooling(nn.Module):
     def __init__(self, d_model):
         super().__init__()
-        self.attention = nn.Linear(d_model, 1)  # Learn token importance from attention mechanism
+        self.attention = nn.Linear(d_model, 1)  # Learn token importance
         
     def forward(self, x):
-        weights = torch.softmax(self.attention(x), dim=1)
-        pooled = (x * weights).sum(dim=1)
+        # x: (batch, tokens, d_model)
+        weights = torch.softmax(self.attention(x), dim=1)  # (batch, tokens, 1)
+        pooled = (x * weights).sum(dim=1)  # (batch, d_model)
         return pooled
 
-# Define MLA transformer
-
 class Transformer(nn.Module):
-    def __init__(self, d_model, nhead, num_layers, dropout, latent_dim):
+    def __init__(self, d_model=64, nhead=4, num_layers=4, dropout=0.1):
         super().__init__()
         
-        # Jet feature compressors and decompressors
-        self.jet_0_compressor = nn.Linear(8, latent_dim)
-        self.jet_0_decompressor = nn.Linear(latent_dim, d_model)
-        
-        self.jet_1_compressor = nn.Linear(8, latent_dim)
-        self.jet_1_decompressor = nn.Linear(latent_dim, d_model)
-        
-        self.jet_2_compressor = nn.Linear(8, latent_dim)
-        self.jet_2_decompressor = nn.Linear(latent_dim, d_model)
-        
-        self.jet_3_compressor = nn.Linear(8, latent_dim)
-        self.jet_3_decompressor = nn.Linear(latent_dim, d_model)
-        
-        # Muon feature compressor and decompressor
-        self.muon_compressor = nn.Linear(10, latent_dim)
-        self.muon_decompressor = nn.Linear(latent_dim, d_model)
-        
-        # Electron feature compressor and decompressor
-        self.electron_compressor = nn.Linear(10, latent_dim)
-        self.electron_decompressor = nn.Linear(latent_dim, d_model)
-        
-        # MET feature compressors and decompressors
-        self.met_compressor = nn.Linear(2, latent_dim)
-        self.met_decompressor = nn.Linear(latent_dim, d_model)
+        # Project each group to d_model
+        self.leading_order_jet_proj = nn.Linear(8, d_model)
+        self.second_order_jet_proj = nn.Linear(8, d_model)
+        self.third_order_jet_proj = nn.Linear(8, d_model)
+        self.fourth_order_jet_proj = nn.Linear(8, d_model)
+        self.muon_proj = nn.Linear(10, d_model)
+        self.electron_proj = nn.Linear(10, d_model)
+        self.met_proj = nn.Linear(2, d_model)
         
         # Transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(
@@ -208,11 +195,8 @@ class Transformer(nn.Module):
             dropout=dropout,
             batch_first=True
         )
-
-        # Encoder
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         
-        # Attention pooling
         self.pool = AttentionPooling(d_model)
 
         # Classifier
@@ -242,37 +226,23 @@ class Transformer(nn.Module):
         electron_features = x[:, 42:52]
         met_features = x[:, 52:54]
         
-        jet_0_latent = self.jet_0_compressor(leading_order_jet_features)
-        jet_0_token = self.jet_0_decompressor(jet_0_latent).unsqueeze(1)
+        # Project each group to token and concatenate
+        leading_order_jet_token = self.leading_order_jet_proj(leading_order_jet_features).unsqueeze(1)
+        second_order_jet_token = self.second_order_jet_proj(second_order_jet_features).unsqueeze(1)
+        third_order_jet_token = self.third_order_jet_proj(third_order_features).unsqueeze(1)
+        fourth_order_jet_token = self.fourth_order_jet_proj(fourth_order_features).unsqueeze(1)
+
+        muon_token = self.muon_proj(muon_features).unsqueeze(1)
+        electron_token = self.electron_proj(electron_features).unsqueeze(1)
+        met_token = self.met_proj(met_features).unsqueeze(1)
         
-        jet_1_latent = self.jet_1_compressor(second_order_jet_features)
-        jet_1_token = self.jet_1_decompressor(jet_1_latent).unsqueeze(1)
-        
-        jet_2_latent = self.jet_2_compressor(third_order_features)
-        jet_2_token = self.jet_2_decompressor(jet_2_latent).unsqueeze(1)
-        
-        jet_3_latent = self.jet_3_compressor(fourth_order_features)
-        jet_3_token = self.jet_3_decompressor(jet_3_latent).unsqueeze(1)
-        
-        muon_latent = self.muon_compressor(muon_features)
-        muon_token = self.muon_decompressor(muon_latent).unsqueeze(1)
-        
-        electron_latent = self.electron_compressor(electron_features)
-        electron_token = self.electron_decompressor(electron_latent).unsqueeze(1)
-        
-        met_latent = self.met_compressor(met_features)
-        met_token = self.met_decompressor(met_latent).unsqueeze(1)
-        
-        # Concatenate all tokens
-        tokens = torch.cat([
-            jet_0_token,
-            jet_1_token,
-            jet_2_token,
-            jet_3_token,
-            muon_token,
-            electron_token,
-            met_token
-        ], dim=1)
+        tokens = torch.cat([leading_order_jet_token,
+                            second_order_jet_token,
+                            third_order_jet_token,
+                            fourth_order_jet_token,
+                            muon_token, 
+                            electron_token, 
+                            met_token], dim=1)
         
         # Transformer
         tokens = self.transformer(tokens)
@@ -282,15 +252,12 @@ class Transformer(nn.Module):
         
         return self.classifier(pooled)
 
-# Create model instance
-
 model = Transformer(
     d_model=control_panel.model_config.d_model,
     nhead=control_panel.model_config.nhead,
     num_layers=control_panel.model_config.num_layers,
-    dropout=control_panel.model_config.dropout,
-    latent_dim=control_panel.model_config.latent_dim
-).to(device)
+    dropout=control_panel.model_config.dropout
+    ).to(device)
 
 ### ------------------------------ Early stopping mechanism ------------------------------ ###
 
@@ -316,12 +283,14 @@ early_stopping = EarlyStopping()
 ### ------------------------------ KL Divergence loss function ------------------------------ ###
 
 def distribution_considering_loss(pred, target, bins, hist_min, hist_max):
+        # Reshape target matrix
         target_dim = pred.shape[1]
         if isinstance(hist_min, (float, int)):
             hist_min = pred.new_tensor([hist_min] * target_dim)
         if isinstance(hist_max, (float, int)):
             hist_max = pred.new_tensor([hist_max] * target_dim)
 
+        # Define max and min histogram
         hist_min = hist_min.to(device=pred.device, dtype=pred.dtype).reshape(-1)
         hist_max = hist_max.to(device=pred.device, dtype=pred.dtype).reshape(-1)
 
@@ -335,8 +304,10 @@ def distribution_considering_loss(pred, target, bins, hist_min, hist_max):
                 device=pred.device, dtype=pred.dtype
             )
 
+            # Define Gaussian kernels
             pred_kernel = torch.exp(-0.5 * ((pred_dim.unsqueeze(1) - centers.unsqueeze(0)) / control_panel.train_config.kl_sigma) ** 2)
             target_kernel = torch.exp(-0.5 * ((target_dim_values.unsqueeze(1) - centers.unsqueeze(0)) / control_panel.train_config.kl_sigma) ** 2)
+
 
             pred_hist = pred_kernel.mean(dim=0) + control_panel.train_config.kl_eps
             target_hist = target_kernel.mean(dim=0) + control_panel.train_config.kl_eps
@@ -352,6 +323,7 @@ def distribution_considering_loss(pred, target, bins, hist_min, hist_max):
 
 # Loss function
 loss = nn.HuberLoss()
+mass_loss_func = nn.L1Loss()
 
 # Optimiser
 optimiser = torch.optim.AdamW(model.parameters(), lr=control_panel.train_config.learning_rate, weight_decay=control_panel.train_config.weight_decay)
@@ -367,8 +339,7 @@ scheduler = ReduceLROnPlateau(
 
 ### ------------------------------ Run Training Loop ------------------------------ ###
 
-# Load in mass scaling dat
-
+# Load in mass scaling data
 with h5py.File("kinematic_features_scaler_info.h5", "r") as f:
     scaler_Y_mean = torch.tensor(f["Y_mean"][:], device=device, dtype=torch.float32)
     scaler_Y_scale = torch.tensor(f["Y_scale"][:], device=device, dtype=torch.float32)
@@ -376,10 +347,12 @@ with h5py.File("kinematic_features_scaler_info.h5", "r") as f:
 # Track train losses
 losses = [] # Kinematic train loss
 kl_losses = []
+mass_losses = []
 
 # Track validation losses
 val_losses = [] # Kinematic validation loss
 kl_val_losses = []
+mass_val_losses = []
 
 # Track time
 times = []
@@ -395,13 +368,15 @@ for epoch in range(control_panel.train_config.num_epochs):
     model.train()
     epoch_train_loss = 0.0
     epoch_train_kl = 0.0
+    epoch_train_mass = 0.0
 
     # Ramp up KL weight
     current_kl_weight = control_panel.train_config.kl_weight_max * min(1.0, (epoch + 1) / control_panel.train_config.kl_ramp_epochs)
 
-    for batch_x, batch_y in train_loader:
+    for batch_x, batch_y, batch_m in train_loader:
         batch_x = batch_x.to(device)
         batch_y = batch_y.to(device)
+        batch_m = batch_m.to(device)
         
         y_pred = model(batch_x)
         
@@ -419,8 +394,47 @@ for epoch in range(control_panel.train_config.num_epochs):
             hist_max=hist_max,
         )
 
+        # Unscale y pred, true targets, and m 
+        y_pred_unscaled = y_pred * scaler_Y_scale + scaler_Y_mean
+        batch_y_unscaled = batch_y * scaler_Y_scale + scaler_Y_mean
+
+        top_px_pred, top_py_pred, top_pz_pred = y_pred_unscaled[:, 0], y_pred_unscaled[:, 1], y_pred_unscaled[:, 2]
+        top_E_pred = y_pred_unscaled[:, 6]
+
+        antitop_px_pred, antitop_py_pred, antitop_pz_pred = y_pred_unscaled[:, 3], y_pred_unscaled[:, 4], y_pred_unscaled[:, 5]
+        antitop_E_pred = y_pred_unscaled[:, 7]
+
+        top_px_true, top_py_true, top_pz_true = batch_y_unscaled[:, 0], batch_y_unscaled[:, 1], batch_y_unscaled[:, 2]
+        top_E_true = batch_y_unscaled[:, 6]
+
+        antitop_px_true, antitop_py_true, antitop_pz_true = batch_y_unscaled[:, 3], batch_y_unscaled[:, 4], batch_y_unscaled[:, 5]
+        antitop_E_true = batch_y_unscaled[:, 7]
+
+        top_m_pred = torch.sqrt(torch.clamp(top_E_pred**2 - (top_px_pred**2 + top_py_pred**2 + top_pz_pred**2), min=1e-6))
+        antitop_m_pred = torch.sqrt(torch.clamp(antitop_E_pred**2 - (antitop_px_pred**2 + antitop_py_pred**2 + antitop_pz_pred**2), min=1e-6))
+
+        ttbar_px_pred = top_px_pred + antitop_px_pred
+        ttbar_py_pred = top_py_pred + antitop_py_pred
+        ttbar_pz_pred = top_pz_pred + antitop_pz_pred
+        ttbar_E_pred  = top_E_pred + antitop_E_pred
+
+        ttbar_px_true = top_px_true + antitop_px_true
+        ttbar_py_true = top_py_true + antitop_py_true
+        ttbar_pz_true = top_pz_true + antitop_pz_true
+        ttbar_E_true  = top_E_true + antitop_E_true
+
+        m_ttbar_pred = torch.sqrt(torch.clamp(ttbar_E_pred**2 - (ttbar_px_pred**2 + ttbar_py_pred**2 + ttbar_pz_pred**2), min=1e-6))
+        m_ttbar_true = torch.sqrt(torch.clamp(ttbar_E_true**2 - (ttbar_px_true**2 + ttbar_py_true**2 + ttbar_pz_true**2), min=1e-6))
+
+        individual_mass_loss = mass_loss_func(top_m_pred, batch_m[:, 0]) + mass_loss_func(antitop_m_pred, batch_m[:, 1])
+
+        system_mass_loss = mass_loss_func(m_ttbar_pred, m_ttbar_true)
+
+        # Sum of both constraints
+        mass_loss = individual_mass_loss + system_mass_loss
+
         # Combined loss: Huber + KL + Mass loss
-        total_loss = huber_loss + current_kl_weight * kl_loss
+        total_loss = huber_loss + current_kl_weight * kl_loss + mass_loss * control_panel.train_config.mass_loss_weight
         
         optimiser.zero_grad()
         total_loss.backward()
@@ -428,12 +442,15 @@ for epoch in range(control_panel.train_config.num_epochs):
         
         epoch_train_loss += total_loss.item()
         epoch_train_kl += kl_loss.item()
+        epoch_train_mass += mass_loss.item()
 
     avg_train_loss = epoch_train_loss / len(train_loader)
     avg_train_kl = epoch_train_kl / len(train_loader)
+    avg_train_mass = epoch_train_mass / len(train_loader)
 
     losses.append(avg_train_loss)
     kl_losses.append(avg_train_kl)
+    mass_losses.append(avg_train_mass)
 
     epoch_time = time.time() - start_time
     times.append(epoch_time)
@@ -444,9 +461,10 @@ for epoch in range(control_panel.train_config.num_epochs):
     epoch_val_kl = 0.0
     epoch_val_mass = 0.0
     with torch.no_grad():
-        for batch_x, batch_y in val_loader:
+        for batch_x, batch_y, batch_m in val_loader:
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
+            batch_m = batch_m.to(device)
             y_pred = model(batch_x)
             
             huber_loss = loss(y_pred, batch_y)
@@ -461,22 +479,64 @@ for epoch in range(control_panel.train_config.num_epochs):
                 hist_max=hist_max,
             )
 
+            # Unscale y pred, true targets, and m 
+            y_pred_unscaled = y_pred * scaler_Y_scale + scaler_Y_mean
+            batch_y_unscaled = batch_y * scaler_Y_scale + scaler_Y_mean
+
+            top_px_pred, top_py_pred, top_pz_pred = y_pred_unscaled[:, 0], y_pred_unscaled[:, 1], y_pred_unscaled[:, 2]
+            top_E_pred = y_pred_unscaled[:, 6]
+
+            antitop_px_pred, antitop_py_pred, antitop_pz_pred = y_pred_unscaled[:, 3], y_pred_unscaled[:, 4], y_pred_unscaled[:, 5]
+            antitop_E_pred = y_pred_unscaled[:, 7]
+
+            top_px_true, top_py_true, top_pz_true = batch_y_unscaled[:, 0], batch_y_unscaled[:, 1], batch_y_unscaled[:, 2]
+            top_E_true = batch_y_unscaled[:, 6]
+
+            antitop_px_true, antitop_py_true, antitop_pz_true = batch_y_unscaled[:, 3], batch_y_unscaled[:, 4], batch_y_unscaled[:, 5]
+            antitop_E_true = batch_y_unscaled[:, 7]
+
+            top_m_pred = torch.sqrt(torch.clamp(top_E_pred**2 - (top_px_pred**2 + top_py_pred**2 + top_pz_pred**2), min=1e-6))
+            antitop_m_pred = torch.sqrt(torch.clamp(antitop_E_pred**2 - (antitop_px_pred**2 + antitop_py_pred**2 + antitop_pz_pred**2), min=1e-6))
+
+            ttbar_px_pred = top_px_pred + antitop_px_pred
+            ttbar_py_pred = top_py_pred + antitop_py_pred
+            ttbar_pz_pred = top_pz_pred + antitop_pz_pred
+            ttbar_E_pred  = top_E_pred + antitop_E_pred
+
+            ttbar_px_true = top_px_true + antitop_px_true
+            ttbar_py_true = top_py_true + antitop_py_true
+            ttbar_pz_true = top_pz_true + antitop_pz_true
+            ttbar_E_true  = top_E_true + antitop_E_true
+
+            m_ttbar_pred = torch.sqrt(torch.clamp(ttbar_E_pred**2 - (ttbar_px_pred**2 + ttbar_py_pred**2 + ttbar_pz_pred**2), min=1e-6))
+            m_ttbar_true = torch.sqrt(torch.clamp(ttbar_E_true**2 - (ttbar_px_true**2 + ttbar_py_true**2 + ttbar_pz_true**2), min=1e-6))
+
+            individual_mass_loss = mass_loss_func(top_m_pred, batch_m[:, 0]) + mass_loss_func(antitop_m_pred, batch_m[:, 1])
+
+            system_mass_loss = mass_loss_func(m_ttbar_pred, m_ttbar_true)
+
+            # Sum of both constraints
+            mass_loss = individual_mass_loss + system_mass_loss
+
             # Combined loss: Huber + KL + Mass loss
-            total_loss = huber_loss + current_kl_weight * kl_loss
+            total_loss = huber_loss + current_kl_weight * kl_loss + mass_loss * control_panel.train_config.mass_loss_weight
             
             epoch_val_loss += total_loss.item()
-            epoch_val_kl += kl_loss.item()      
+            epoch_val_kl += kl_loss.item()
+            epoch_val_mass += mass_loss.item()            
     
     avg_val_loss = epoch_val_loss / len(val_loader)
     avg_val_kl = epoch_val_kl / len(val_loader)
+    avg_val_mass = epoch_val_mass / len(val_loader)
 
     val_losses.append(avg_val_loss)
     kl_val_losses.append(avg_val_kl)
+    mass_val_losses.append(avg_val_mass)
 
     scheduler.step(avg_val_loss)
 
     if (epoch + 1) % 1 == 0:
-        print(f"Epoch {epoch+1}/{control_panel.train_config.num_epochs} | Train Loss: {avg_train_loss:.4f} (KL: {avg_train_kl:.4f}) | Val Loss: {avg_val_loss:.4f} (KL: {avg_val_kl:.4f}) | Train - Val Loss Diff : {np.abs(avg_val_loss - avg_train_loss):.4f} | Epoch Time: {epoch_time:.2f}s | Total Time: {np.sum(times):.2f}s")
+        print(f"Epoch {epoch+1}/{control_panel.train_config.num_epochs} | Train Loss: {avg_train_loss:.4f} (KL: {avg_train_kl:.4f}) | Val Loss: {avg_val_loss:.4f} (KL: {avg_val_kl:.4f}) | Train - Val Loss Diff : {np.abs(avg_val_loss - avg_train_loss):.4f} | Mass Train Loss : {avg_train_mass:.4f} | Mass Val Loss : {avg_val_mass:.4f} | Epoch Time: {epoch_time:.2f}s | Total Time: {np.sum(times):.2f}s")
 
     if epoch >= control_panel.train_config.min_early_stop:
         early_stopping(avg_val_loss)
@@ -501,7 +561,7 @@ with h5py.File("kinematic_features_test.h5", "r") as f:
 model.eval()
 list_of_predictions = []
 with torch.no_grad():
-    for inputs, targets in test_loader:
+    for inputs, targets, masses in test_loader:
         inputs = inputs.to(device)
         outputs = model(inputs)
         list_of_predictions.append(outputs.cpu())
@@ -540,6 +600,8 @@ axes1[0].plot(losses, label='Kinematic Train Loss')
 axes1[0].plot(val_losses, label='Kinematic Validation Loss')
 axes1[0].plot(kl_losses, label='KL Train Loss')
 axes1[0].plot(kl_val_losses, label='KL Validation Loss')
+axes1[0].plot(mass_losses, label='Mass Train Loss')
+axes1[0].plot(mass_val_losses, label='Mass Validation Loss')
 axes1[0].set_xlabel('Epoch')
 axes1[0].set_ylabel('Loss')
 axes1[0].set_title('Training and Validation Loss')
@@ -674,7 +736,7 @@ ttbar_true = top_true + antitop_true
 M_pred = ttbar_pred.mass
 M_true = ttbar_true.mass
 
-### ------------------------------ Invariant Mass Plots ------------------------------ #
+### ------------------------------ Plot Invariant Mass ------------------------------ #
 
 fig4, axes4 = plt.subplots(1, 3, figsize=(18, 6))
 

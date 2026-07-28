@@ -142,6 +142,49 @@ def conditional_flow_matching_loss(VelocityNet, ContEmbedder, X_train_batch, Y_t
 
     return ((v_pred - v_target) ** 2).mean()
 
+embed_dim = 64
+
+Embedder = ContextEmbeddor(Ninputs=N_inputs,Nembed=embed_dim).to(device)
+Sinusoidembed = SinusoidalPositionEmbeddings(dim=embed_dim).to(device)
+
+VelNet = ConditionalVelocityNet(
+    Ninput=1, 
+    Ncontext=embed_dim, 
+    TimeEmbedder=Sinusoidembed,
+    Nhidden=256).to(device)
+
+print(Embedder)
+print(VelNet)
+
+### ------------------------------ Sampling Functions ------------------------------ ###
+
+def sample_flow(model, embedder, X_test, n_steps=100, device=device):
+    with torch.no_grad():
+        B = X_test.shape[0]
+
+        # Condition
+        c = embedder(X_test.to(device))
+
+        # Initial noise
+        x = torch.randn(B, 1, device=device)
+
+        dt = 1.0 / n_steps
+
+        for i in range(n_steps):
+            t = torch.full((B, 1), i / n_steps, device=device)
+            v = model(x, t, c)
+            x = x + dt * v
+
+        return x
+
+def sample_flow_repeated(model, embedder, X_test, n_steps=100, n_samples=50, device='cuda'):
+    all_samples = []
+    with torch.no_grad():
+        for _ in range(n_samples):
+            samples = sample_flow(model, embedder, X_test, n_steps=n_steps, device=device)
+            all_samples.append(samples)
+        return all_samples
+
 def sample_flow_mean(
     model,
     embedder,
@@ -166,35 +209,21 @@ def sample_flow_mean(
         dt = 1.0 / n_steps
 
         for i in range (n_steps):
-            t = torch.full((B, S, 1), i / n_steps, device=device)
+            t_val = i / n_steps
+            t = torch.full((B, S, 1), t_val, device=device)
 
-            # Flatten batch
-            x_flat = x.reshape(B * S, 1)
-            t_flat = t.reshape(B * S, 1)
-            c_flat = c.reshape(B * S, c.shape[-1])
+            # Flatten batch and predict initial velocity
+            v1 = model(x.reshape(B*S, 1), t.reshape(B*S, 1), c.reshape(B*S, -1)).reshape(B, S, 1)
+            
+            # Predict half-step position and velocity
+            x_half = x + 0.5 * dt * v1
+            t_half = torch.full((B, S, 1), t_val + 0.5 * dt, device=device)
+            v2 = model(x_half.reshape(B*S, 1), t_half.reshape(B*S, 1), c.reshape(B*S, -1)).reshape(B, S, 1)
 
-            v = model(x_flat, t_flat, c_flat)
-
-            # Restore shape
-            v = v.reshape(B,S,1)
-
-            x = x + dt * v
+            # Take the step using the midpoint velocity
+            x = x + dt * v2
         
         return x # (B, S, 1)
-
-embed_dim = 64
-
-Embedder = ContextEmbeddor(Ninputs=N_inputs,Nembed=embed_dim).to(device)
-Sinusoidembed = SinusoidalPositionEmbeddings(dim=embed_dim).to(device)
-
-VelNet = ConditionalVelocityNet(
-    Ninput=1, 
-    Ncontext=embed_dim, 
-    TimeEmbedder=Sinusoidembed,
-    Nhidden=256).to(device)
-
-print(Embedder)
-print(VelNet)
 
 ### ------------------------------ Early stopping mechanism ------------------------------ ###
 
@@ -239,7 +268,7 @@ val_losses = [] # Keeps track of validation loss @ each epoch
 times = [] # Keep track of times
 
 
-N_epochs = 800 # Number of epochs we iterate over
+N_epochs = 250 # Number of epochs we iterate over
 
 for epoch in range(N_epochs):
 
@@ -316,7 +345,7 @@ for epoch in range(N_epochs):
 
     final_epoch = epoch+1
     
-    if epoch >= 50: # Starts the early stop loss after the 50th epoch 
+    if epoch >= 50: # Starts the early stop loss checks after the warmup epochs 
         early_stopping(avg_val_loss)
         if early_stopping.early_stop:
             print("Early stopping triggered.")
@@ -324,6 +353,8 @@ for epoch in range(N_epochs):
             break
 
     torch.cuda.empty_cache()
+print("Training Complete")
+print("="*60)
 
 ### ------------------------------ Evaluate Model ------------------------------ ###
 
@@ -344,10 +375,10 @@ with torch.no_grad():
     for inputs, targets in test_loader:
         inputs = inputs.to(device) 
         outputs = sample_flow_mean(VelNet, Embedder, inputs, n_steps=250)
+        #outputs = sample_flow_repeated(VelNet, Embedder, inputs, n_steps=250)
         pred_mean = torch.mean(outputs,dim=1)
 
-        list_of_predictions.append(pred_mean.cpu()) 
-
+        list_of_predictions.append(pred_mean.cpu())
 
 pred = torch.concatenate(list_of_predictions)
 Y_pred = pred.detach().cpu().numpy().flatten()
@@ -362,21 +393,16 @@ MAE = mean_absolute_error(Y_test_scaled,Y_pred)
 R2 = r2_score(Y_test_scaled,Y_pred)
 
 # 1. Histogram the data to turn event regression into a PDF
-# Use identical binning for both!
-bins = np.linspace(0, max(np.max(Y_test_scaled),np.max(Y_pred)), num=100) # Adjust range to your P_T spectrum
+bins = np.linspace(0, max(np.max(Y_test_scaled),np.max(Y_pred)), num=100) 
 p_counts, _ = np.histogram(Y_test_scaled, bins=bins)
 q_counts, _ = np.histogram(Y_pred, bins=bins)
 
-# 2. Normalize so they sum to 1 (making them valid probabilities)
-P = p_counts / np.sum(p_counts)
-Q = q_counts / np.sum(q_counts)
-
-# 3. Add a tiny epsilon to prevent log(0) or division by zero errors
+# 2. Normalise
 epsilon = 1e-10
-P = np.clip(P, epsilon, 1)
-Q = np.clip(Q, epsilon, 1)
+P = (p_counts + epsilon) / np.sum(p_counts + epsilon)
+Q = (q_counts + epsilon) / np.sum(q_counts + epsilon)
 
-# 4. Calculate proper KL Divergence
+# 3. Calculate KL Divergence
 KLD = np.sum(rel_entr(P, Q))
 
 # Inverse transform using saved scaler
@@ -460,7 +486,7 @@ axes[1,1].legend()
 axes[1,1].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig("../plots/1ttbar_Mass_flowmatch_large.png")
+plt.savefig("../plots/ttbar_mass_flowmatch.png")
 plt.show()
 
 # ------------------------------ Save Predictions to File (Use for ORIGIN) ------------------------------ #
@@ -470,14 +496,14 @@ results = np.column_stack([Y_test_geV, Y_pred_geV, Y_pred_geV - Y_test_geV])
 
 # Save to file
 np.savetxt(
-    "../train_outputs/1ttbar_mass_predictions_flowmatch_large.txt", 
+    "../train_outputs/ttbar_mass_predictions_flowmatch.txt", 
     results,
     header="True_Mass_GeV  Predicted_Mass_GeV  Resolution_GeV",
     fmt="%.2f",
     delimiter="  "
 )
 
-print("Saved predictions to ../data/1ttbar_mass_predictions_flowmatch_large.txt")
+print("Saved predictions to ../data/ttbar_mass_predictions_flowmatch.txt")
 
 print("---------------Metrics---------------")
 print(f"Epochs: {final_epoch}/{N_epochs}")
