@@ -1,0 +1,32 @@
+# Data files and paths
+data:
+  train_file: "direct_parameters_train.h5"
+  val_file: "direct_parameters_val.h5"
+  test_file: "direct_parameters_test.h5"
+  scaler_file: "direct_parameters_scaler_info.h5"
+  batch_size: 4096
+  num_workers: 4
+  pin_memory: true
+  use_mass_loss: false
+
+# Preprocessing options
+preprocessing:
+  use_large_reco: true
+  use_direct_regression: true
+  use_mass_loss: false
+  use_truth_lepton: false
+  use_pred_lepton: false
+  direct_targets:
+    - "mttbar"
+    - "cos_theta_star"
+    - "cos_theta_ttbar"
+    - "cos_x_plus_minus"
+    - "cos_N_plus_minus"
+
+# Current possible targets are "mttbar", "cos_theta_star", "cos_theta_ttbar", "cos_x_plus_minus", "cos_N_plus_minus
+
+# Saving configuration
+saving:
+  regression_target: "direct_parameters_"
+  loss_curve: "direct_parameters_loss_curve.png"
+  evaluation_results: "direct_parameters_evaluation_results.h5"

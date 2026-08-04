@@ -1,0 +1,62 @@
+# Model architecture
+model:
+  d_model: 64
+  nhead: 4
+  num_layers: 4
+  dropout: 0.1
+
+  num_classifier_layers: 3
+  classifier_start_neurons: 128
+  classifier_dropout: 0.1
+
+  feature_groups:
+    leading_jets: [0, 8]
+    second_jets: [8, 16]
+    third_jets: [16, 24]
+    fourth_jets: [24, 32]
+    electrons: [32, 42]
+    muons: [42, 52]
+    met: [52, 54]
+
+# Training hyperparameters
+training:
+  num_epochs: 25
+  learning_rate: 0.0005
+  weight_decay: 0.01
+
+  kl_weight_max: 0.2
+  kl_ramp_epochs: 15
+  kl_bins: 100
+  kl_sigma: 0.4
+  kl_eps: 0.00000001
+
+  mass_loss_weight: 0.01
+
+  patience: 10
+  min_delta: 0.0
+  min_early_stop: 150
+
+  scheduler_factor: 0.5
+  scheduler_patience: 5
+  scheduler_min_lr: 1e-6
+
+# Analysis options
+analysis:
+  target_names:
+    - "mttbar"
+    - "cos_theta_star"
+    - "cos_theta_ttbar"
+    - "cos_x_minus"
+    - "cos_x_plus"
+    - "cos_N_minus"
+    - "cos_N_plus"
+
+  obs_fields:
+    - "cos_K_plus"
+    - "cos_K_minus"
+    - "cos_N_plus"
+    - "cos_N_minus"
+    - "cos_R_plus"
+    - "cos_R_minus"
+    - "cos_phi"
+    - "cos_theta_star"
