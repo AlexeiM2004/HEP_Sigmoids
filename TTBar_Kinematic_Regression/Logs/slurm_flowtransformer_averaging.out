@@ -1,0 +1,184 @@
+# ---------- BATCH RECIEPT ---------- #
+Job ID: 18226687
+Job Name: kinematic_flowtransform.sh
+Submit Time: Tue  4 Aug 16:12:39 BST 2026
+Node: node882.csf3.man.alces.network
+User: q44882cb
+Partition: gpuL
+GPUs: 1
+Working Directory: /mnt/iusers01/fse-ugpgt01/phy01/q44882cb
+# ----------------------------------- #
+
+Job started at : 2026-08-04 16:13:42
+Using cuda device with number of GPUs: 1
+Saving to flowtransform_train_150_samp_10 prefixed files
+Input Length: 54
+TransformerVelocityNet(
+  (TimeEmbedder): SinusoidalPositionEmbeddings()
+  (time_proj): Linear(in_features=64, out_features=64, bias=True)
+  (xt_proj): Linear(in_features=8, out_features=64, bias=True)
+  (leading_order_jet_proj): Linear(in_features=8, out_features=64, bias=True)
+  (second_order_jet_proj): Linear(in_features=8, out_features=64, bias=True)
+  (third_order_jet_proj): Linear(in_features=8, out_features=64, bias=True)
+  (fourth_order_jet_proj): Linear(in_features=8, out_features=64, bias=True)
+  (muon_proj): Linear(in_features=10, out_features=64, bias=True)
+  (electron_proj): Linear(in_features=10, out_features=64, bias=True)
+  (met_proj): Linear(in_features=2, out_features=64, bias=True)
+  (transformer): TransformerEncoder(
+    (layers): ModuleList(
+      (0-3): 4 x TransformerEncoderLayer(
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=64, out_features=64, bias=True)
+        )
+        (linear1): Linear(in_features=64, out_features=256, bias=True)
+        (dropout): Dropout(p=0.02, inplace=False)
+        (linear2): Linear(in_features=256, out_features=64, bias=True)
+        (norm1): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+        (norm2): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+        (dropout1): Dropout(p=0.02, inplace=False)
+        (dropout2): Dropout(p=0.02, inplace=False)
+      )
+    )
+  )
+  (classifier): Sequential(
+    (0): Linear(in_features=64, out_features=128, bias=True)
+    (1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+    (2): GELU(approximate='none')
+    (3): Dropout(p=0.02, inplace=False)
+    (4): Linear(in_features=128, out_features=64, bias=True)
+    (5): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+    (6): GELU(approximate='none')
+    (7): Dropout(p=0.02, inplace=False)
+    (8): Linear(in_features=64, out_features=32, bias=True)
+    (9): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+    (10): GELU(approximate='none')
+    (11): Dropout(p=0.02, inplace=False)
+    (12): Linear(in_features=32, out_features=8, bias=True)
+  )
+)
+Beginning Training Loop
+============================================================
+Epoch 10/150 | Train Loss: 0.4700 | Val Loss: 0.4259 | Loss Diff : 0.0441
+Epoch Time: 28.09s | Total Time: 4 minutes 48.17s
+============================================================
+Epoch 20/150 | Train Loss: 0.4399 | Val Loss: 0.4028 | Loss Diff : 0.0371
+Epoch Time: 28.21s | Total Time: 9 minutes 29.83s
+============================================================
+Epoch 30/150 | Train Loss: 0.4243 | Val Loss: 0.3882 | Loss Diff : 0.0362
+Epoch Time: 28.22s | Total Time: 14 minutes 11.47s
+============================================================
+Epoch 40/150 | Train Loss: 0.4154 | Val Loss: 0.3867 | Loss Diff : 0.0287
+Epoch Time: 28.02s | Total Time: 18 minutes 53.32s
+============================================================
+Epoch 50/150 | Train Loss: 0.4110 | Val Loss: 0.3799 | Loss Diff : 0.0311
+Epoch Time: 28.19s | Total Time: 23 minutes 34.65s
+============================================================
+Epoch 60/150 | Train Loss: 0.4076 | Val Loss: 0.3756 | Loss Diff : 0.0320
+Epoch Time: 28.16s | Total Time: 28 minutes 16.50s
+============================================================
+Epoch 70/150 | Train Loss: 0.4041 | Val Loss: 0.3751 | Loss Diff : 0.0290
+Epoch Time: 28.12s | Total Time: 32 minutes 57.89s
+============================================================
+Epoch 80/150 | Train Loss: 0.3964 | Val Loss: 0.3674 | Loss Diff : 0.0289
+Epoch Time: 28.14s | Total Time: 37 minutes 39.52s
+============================================================
+Epoch 90/150 | Train Loss: 0.3952 | Val Loss: 0.3656 | Loss Diff : 0.0296
+Epoch Time: 28.04s | Total Time: 42 minutes 20.48s
+============================================================
+Epoch 100/150 | Train Loss: 0.3938 | Val Loss: 0.3664 | Loss Diff : 0.0274
+Epoch Time: 28.12s | Total Time: 47 minutes 2.45s
+============================================================
+Epoch 110/150 | Train Loss: 0.3900 | Val Loss: 0.3599 | Loss Diff : 0.0301
+Epoch Time: 28.09s | Total Time: 51 minutes 43.74s
+============================================================
+Epoch 120/150 | Train Loss: 0.3897 | Val Loss: 0.3612 | Loss Diff : 0.0285
+Epoch Time: 28.11s | Total Time: 56 minutes 25.77s
+============================================================
+Epoch 130/150 | Train Loss: 0.3874 | Val Loss: 0.3588 | Loss Diff : 0.0287
+Epoch Time: 28.10s | Total Time: 61 minutes 7.55s
+============================================================
+Epoch 140/150 | Train Loss: 0.3863 | Val Loss: 0.3577 | Loss Diff : 0.0285
+Epoch Time: 28.13s | Total Time: 65 minutes 49.72s
+============================================================
+Epoch 150/150 | Train Loss: 0.3859 | Val Loss: 0.3571 | Loss Diff : 0.0288
+Epoch Time: 28.18s | Total Time: 70 minutes 31.42s
+============================================================
+Training Complete
+============================================================
+Saved model to ../trained_models/flowtransform_train_150_samp_10_kinematic_flowtransformer_model.pt
+Test Predictions Completed
+============================================================
+
+
+============================================================
+TARGET FEATURE METRICS
+============================================================
+top_px: MSE=0.1316
+ R²=0.8688
+ MAE = 0.2607
+ KLD=0.0084
+ WD=0.0597
+ ED=0.4736
+
+top_py: MSE=0.1314
+ R²=0.8684
+ MAE = 0.2604
+ KLD=0.0088
+ WD=0.0573
+ ED=0.4544
+
+top_pz: MSE=0.0998
+ R²=0.8999
+ MAE = 0.2126
+ KLD=0.0072
+ WD=0.0259
+ ED=0.2650
+
+antitop_px: MSE=0.1321
+ R²=0.8684
+ MAE = 0.2611
+ KLD=0.0086
+ WD=0.0588
+ ED=0.4624
+
+antitop_py: MSE=0.1322
+ R²=0.8673
+ MAE = 0.2613
+ KLD=0.0088
+ WD=0.0566
+ ED=0.4488
+
+antitop_pz: MSE=0.0993
+ R²=0.9006
+ MAE = 0.2126
+ KLD=0.0053
+ WD=0.0246
+ ED=0.2429
+
+top_E: MSE=0.2118
+ R²=0.7872
+ MAE = 0.2821
+ KLD=0.1103
+ WD=0.0596
+ ED=0.7096
+
+antitop_E: MSE=0.2102
+ R²=0.7895
+ MAE = 0.2817
+ KLD=0.0830
+ WD=0.0564
+ ED=0.6854
+
+============================================================
+
+============================================================
+INVARIANT MASS METRICS
+============================================================
+MSE:  6577.8823
+RMSE: 81.1041 GeV
+MAE:  55.0483 GeV
+R²:   0.8034
+KLD: 0.0775
+WD: 12.0305
+ED: 0.7971
+============================================================
