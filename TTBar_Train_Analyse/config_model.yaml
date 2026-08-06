@@ -1,0 +1,77 @@
+# Model architecture
+model:
+  # Model parameters
+  d_model: 128
+  nhead: 8
+  num_layers: 8
+  dropout: 0.1
+
+  # Classifier parameters
+  num_classifier_layers: 5
+  classifier_start_neurons: 128
+  classifier_dropout: 0.05
+
+  # Model type - (MLA or MHA)
+  use_MLA_transformer: true
+
+  # See here for MLA benefits uses - https://arxiv.org/pdf/2405.04434
+
+  # Dynamic tokenisation, (Current tokenisation based on feature groups)
+  # User should edit this depending on their selected X data. Better tokenisation, better results
+  feature_groups:
+    electrons: [0, 10]      # Electron features 0 - 9 columns from X data 
+    muons: [10, 20]         # Muon features 10 - 19 columns from X data  
+    met: [20, 22]           # MET features 20 - 21 columns from X data 
+    em: [22,46]             # EM features 22 - 45 columns from X data 
+    nw: [46, 70]            # NW features 46 - 69 columns from X data 
+    leading_jets: [70, 78]  # Leading order jet features 70 - 77 columns from X data 
+    second_jets: [78, 86]   # Second jet features 78 - 85 columns from X data 
+    third_jets: [86, 94]    # Third jet features 86 - 93 columns from X data 
+    fourth_jets: [94, 102]  # Fourth jet features 94 - 101 columns from X data 
+
+# Training hyperparameters
+training:
+  # Number of epcohs to train for
+  num_epochs: 100
+
+  # AdamW learning rate and weight decay
+  learning_rate: 0.0005
+  weight_decay: 0.01
+
+  # KL divergence parameters
+  kl_weight_max: 0.2
+  kl_ramp_epochs: 15
+  kl_bins: 100
+  kl_sigma: 0.4
+  kl_eps: 0.00000001
+
+  # Mass loss parameters 
+  mass_loss_weight: 0.01
+
+  # Early stopping mechanism parameters
+  patience: 10
+  min_delta: 0.0
+  min_early_stop: 150
+
+  # ReduceLRonPlateau parameters
+  scheduler_factor: 0.5
+  scheduler_patience: 5
+  scheduler_min_lr: 0.0000001
+
+# Analysis options
+analysis:
+  target_names:
+    - "mttbar"
+
+# Possible target names for direct regression "mttbar", "cos_theta_star", "cos_theta_ttbar", "cos_x_minus", "cos_x_plus", "cos_N_minus", "cos_N_plus"
+# Target names for kinematic regression "top_px", "top_py", "top_pz", "top_E", "antitop_px", "antitop_py", "antitop_pz", "antitop_E" 
+
+  obs_fields:
+    - "cos_K_plus"
+    - "cos_K_minus"
+    - "cos_N_plus"
+    - "cos_N_minus"
+    - "cos_R_plus"
+    - "cos_R_minus"
+    - "cos_phi"
+    - "cos_theta_star"
