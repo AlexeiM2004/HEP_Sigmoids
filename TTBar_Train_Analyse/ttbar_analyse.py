@@ -51,18 +51,17 @@ print_yaml_config(config_model, "MODEL CONFIGURATION")
 # Data loading
 evaluation_results = config_data["saving"]["evaluation_results"]
 test_file = config_data["data"]["test_file"]
-regression_target = config_data["saving"]["regression_target"]
 
 # Analysis from model config
 target_names = config_model["analysis"]["target_names"]
 obs_fields = config_model["analysis"]["obs_fields"]
 
 # Build plot file names
-loss_curve_r2_summary_plots = regression_target + "loss_curve_r2_summary_plots.png"
-distribution_summary_plots = regression_target + "distribution_summary_plots.png"
-resolution_summary_plots = regression_target + "resolution_summary_plots.png"
-scatter_summary_plots = regression_target + "scatter_summary_plots.png"
-spin_observables_plots = regression_target + "spin_observables_plots.png"
+loss_curve_r2_summary_plots = "loss_curve_r2_summary_plots.png"
+distribution_summary_plots = "distribution_summary_plots.png"
+resolution_summary_plots = "resolution_summary_plots.png"
+scatter_summary_plots = "scatter_summary_plots.png"
+spin_observables_plots = "spin_observables_plots.png"
 
 ### ------------------------------ Load Data ------------------------------ ###
 
@@ -201,7 +200,7 @@ n_rows, n_cols = get_plot_grid(output_dim)
 ### ------------------------------ Display Metrics ------------------------------ ###
 
 # Store target feature names in an array
-target_names = ['mttbar', 'cos_theta_star', 'cos_theta_ttbar', 'cos_x_minus', 'cos_x_plus', 'cos_N_minus', 'cos_N_plus']
+target_names = ['mttbar']
 
 # Calculate MAE, RMSE, MSE, R2, Wasserstein distance, and KL divergence
 
@@ -236,16 +235,13 @@ for bar, val in zip(bars, r2_per_dim):
 plt.tight_layout()
 plt.savefig(loss_curve_r2_summary_plots)
 plt.close()
-
 ### ------------------------------ Plot Target Feature Distribution ------------------------------ #
 
 fig2, axes2 = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 3))
+axes2 = np.ravel(axes2)
 
 for i in range(output_dim):
-    row = i // n_cols
-    col = i % n_cols
-    ax = axes2[row, col]
-    
+    ax = axes2[i]
     ax.hist(Y_test_unscaled[:, i], bins=100, density=True, histtype='step',
             label='True', color='blue', linewidth=1.5)
     ax.hist(Y_pred_unscaled[:, i], bins=100, density=True, histtype='step',
@@ -254,18 +250,20 @@ for i in range(output_dim):
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 
+# Hide unused subplots
+for i in range(output_dim, n_rows * n_cols):
+    axes2[i].set_visible(False)
+
 plt.tight_layout()
 plt.savefig(distribution_summary_plots)
 
 ### ------------------------------ Plot Target Feature Resolution Plots ------------------------------ #
 
 fig3, axes3 = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 3))
+axes3 = np.ravel(axes3)
 
 for i in range(output_dim):
-    row = i // 4
-    col = i % 4
-    ax = axes3[row, col]
-    
+    ax = axes3[i]
     residuals = Y_pred_unscaled[:, i] - Y_test_unscaled[:, i]
     ax.hist(residuals, bins=50, color='red', alpha=0.7, edgecolor='black')
     ax.axvline(0, color='black', linestyle='--', linewidth=2, label='Perfect')
@@ -275,18 +273,19 @@ for i in range(output_dim):
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 
+for i in range(output_dim, n_rows * n_cols):
+    axes3[i].set_visible(False)
+
 plt.tight_layout()
 plt.savefig(resolution_summary_plots)
 
 ### ------------------------------ Plot Target Feature Scatter Plots ------------------------------ #
 
 fig4, axes4 = plt.subplots(n_rows, n_cols, figsize=(n_cols * 4, n_rows * 3))
+axes4 = np.ravel(axes4)
 
 for i in range(output_dim):
-    row = i // 4
-    col = i % 4
-    ax = axes4[row, col]
-    
+    ax = axes4[i]
     ax.scatter(Y_test_unscaled[:, i], Y_pred_unscaled[:, i],
                alpha=0.1, s=1, color='blue')
     min_val = min(Y_test_unscaled[:, i].min(), Y_pred_unscaled[:, i].min())
@@ -299,9 +298,11 @@ for i in range(output_dim):
     ax.grid(True, alpha=0.3)
     ax.legend(fontsize=8)
 
+for i in range(output_dim, n_rows * n_cols):
+    axes4[i].set_visible(False)
+
 plt.tight_layout()
 plt.savefig(scatter_summary_plots)
-
 
 
 ### ------------------------------ Spin Observable Calculation Functions ------------------------------ #

@@ -10,7 +10,6 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-
 ### ------------------------------ Print Current Timestamp ------------------------------ ###
 
 current_time = datetime.now()
@@ -57,10 +56,12 @@ scaler_file = config_data["data"]["scaler_file"]
 batch_size = config_data["data"]["batch_size"]
 num_workers = config_data["data"]["num_workers"]
 pin_memory = config_data["data"]["pin_memory"]
-use_mass_loss = config_data["data"]["use_mass_loss"]
+use_mass_loss = config_data["preprocessing"]["use_mass_loss"]
+use_kl_divergence = config_data["data"]["use_kl_divergence"]
 
 # Model Configuration
 
+use_MLA_transformer = config_model["model"]["use_MLA_transformer"]
 d_model = config_model["model"]["d_model"]
 nhead = config_model["model"]["nhead"]
 num_layers = config_model["model"]["num_layers"]
@@ -181,6 +182,18 @@ class Transformer(nn.Module):
             in_dim = end - start
             self.projections[name] = nn.Linear(in_dim, d_model)
 
+        # MLA architecture using compressor and decompressor
+
+        if  use_MLA_transformer:
+            # if MLA is selected, compress latent dimension to half the model's dimension
+            latent_dim = d_model // 2
+
+        else:
+            # if MHA selected, latent dimension = model dimension (no compression/decompression occurs)
+            latent_dim = d_model
+
+        self.compressor = nn.Linear(d_model, latent_dim)
+        self.decompressor = nn.Linear(latent_dim, d_model)
         
         # Transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(
@@ -212,10 +225,13 @@ class Transformer(nn.Module):
 
         # Concatenate all tokens
         tokens = torch.cat(tokens, dim=1)
-        
-        # Pass into Transformer
+
+        # Apply compression/decompression
+        latent = self.compressor(tokens)
+        tokens = self.decompressor(latent)
+
         tokens = self.transformer(tokens)
-        
+
         # Attention pooling
         pooled = self.pool(tokens)
         
@@ -344,8 +360,11 @@ for epoch in range(num_epochs):
     epoch_train_kl = 0.0
     epoch_train_mass = 0.0
 
-    # Ramp up KL weight
-    current_kl_weight = kl_weight_max * min(1.0, (epoch + 1) / kl_ramp_epochs)
+    if use_kl_divergence == True:
+        # Ramp up KL weight
+        current_kl_weight = kl_weight_max * min(1.0, (epoch + 1) / kl_ramp_epochs)
+    else:
+        current_kl_weight = 0
 
     for batch_x, batch_y, batch_m in train_loader:
         batch_x = batch_x.to(device)
@@ -355,19 +374,24 @@ for epoch in range(num_epochs):
         
         # Huber loss 
         huber_loss = loss(y_pred, batch_y)
-        
-        # KL divergence loss
-        hist_min = batch_y.min().item() - 0.25
-        hist_max = batch_y.max().item() + 0.25
-        kl_loss = distribution_considering_loss(
-            y_pred,
-            batch_y,
-            bins=kl_bins,
-            hist_min=hist_min,
-            hist_max=hist_max,
-        )
 
-        if use_mass_loss == True: 
+        if use_kl_divergence:
+            # KL divergence loss
+            hist_min = batch_y.min().item() - 0.25
+            hist_max = batch_y.max().item() + 0.25
+            kl_loss = distribution_considering_loss(
+                y_pred,
+                batch_y,
+                bins=kl_bins,
+                hist_min=hist_min,
+                hist_max=hist_max,
+            )
+        else:
+            kl_loss = 0
+
+
+        if use_mass_loss: 
+
             batch_m = batch_m.to(device)
             # Unscale y_pred to reconstruct predicted invariant masses
             y_pred_unscaled = y_pred * scaler_Y_scale + scaler_Y_mean
@@ -424,6 +448,7 @@ for epoch in range(num_epochs):
     times.append(epoch_time)
 
     # Validation
+
     model.eval()
     epoch_val_loss = 0.0
     epoch_val_kl = 0.0
@@ -436,18 +461,21 @@ for epoch in range(num_epochs):
             y_pred = model(batch_x)
             
             huber_loss = loss(y_pred, batch_y)
-            
-            hist_min = batch_y.min().item() - 0.25
-            hist_max = batch_y.max().item() + 0.25
-            kl_loss = distribution_considering_loss(
-                y_pred,
-                batch_y,
-                bins=kl_bins,
-                hist_min=hist_min,
-                hist_max=hist_max,
-            )
 
-            if use_mass_loss == True:
+            if use_kl_divergence:
+                hist_min = batch_y.min().item() - 0.25
+                hist_max = batch_y.max().item() + 0.25
+                kl_loss = distribution_considering_loss(
+                    y_pred,
+                    batch_y,
+                    bins=kl_bins,
+                    hist_min=hist_min,
+                    hist_max=hist_max,
+                )
+            else:
+                kl_loss = 0
+
+            if use_mass_loss:
 
                 batch_m = batch_m.to(device)
                 # Unscale y_pred to reconstruct predicted invariant masses

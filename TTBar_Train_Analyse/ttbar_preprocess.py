@@ -46,15 +46,8 @@ use_pred_lepton = config_data["preprocessing"]["use_pred_lepton"]
 direct_targets = config_data["preprocessing"]["direct_targets"]
 
 # Saving
-regression_target = config_data["saving"]["regression_target"]
 loss_curve = config_data["saving"]["loss_curve"]
 evaluation_results = config_data["saving"]["evaluation_results"]
-
-# Build file names from regression_target
-train_file = regression_target + "train.h5"
-val_file = regression_target + "val.h5"
-test_file = regression_target + "test.h5"
-scaler_file = regression_target + "scaler_info.h5"
 
 ### ------------------------------ File Upload ------------------------------ ###
 
@@ -104,6 +97,28 @@ feature_dict = {
     
     'met_features': { # 2 Categories of met features
         'columns': ['met_met_NOSYS', 'met_phi_NOSYS'],
+    },
+
+    'reco_EM_features' : {
+        'columns' : ['reco_EM_Wminus_eta_NOSYS', 'reco_EM_Wminus_m_NOSYS', 'reco_EM_Wminus_phi_NOSYS',
+                    'reco_EM_Wminus_pt_NOSYS', 'reco_EM_Wplus_eta_NOSYS', 'reco_EM_Wplus_m_NOSYS',
+                    'reco_EM_Wplus_phi_NOSYS', 'reco_EM_Wplus_pt_NOSYS', 'reco_EM_antitop_eta_NOSYS',
+                    'reco_EM_antitop_m_NOSYS', 'reco_EM_antitop_phi_NOSYS', 'reco_EM_antitop_pt_NOSYS', 
+                    'reco_EM_nu_antitop_eta_NOSYS', 'reco_EM_nu_antitop_m_NOSYS', 'reco_EM_nu_antitop_phi_NOSYS',
+                    'reco_EM_nu_antitop_pt_NOSYS', 'reco_EM_nu_top_eta_NOSYS', 'reco_EM_nu_top_m_NOSYS',
+                    'reco_EM_nu_top_phi_NOSYS', 'reco_EM_nu_top_pt_NOSYS', 'reco_EM_top_eta_NOSYS', 
+                    'reco_EM_top_m_NOSYS', 'reco_EM_top_phi_NOSYS', 'reco_EM_top_pt_NOSYS'],
+    },
+
+    'reco_NW_features' : {
+        'columns' : ['reco_NW_Wminus_eta_NOSYS', 'reco_NW_Wminus_m_NOSYS', 'reco_NW_Wminus_phi_NOSYS',
+                    'reco_NW_Wminus_pt_NOSYS', 'reco_NW_Wplus_eta_NOSYS', 'reco_NW_Wplus_m_NOSYS', 
+                    'reco_NW_Wplus_phi_NOSYS', 'reco_NW_Wplus_pt_NOSYS', 'reco_NW_antitop_eta_NOSYS',
+                    'reco_NW_antitop_m_NOSYS', 'reco_NW_antitop_phi_NOSYS', 'reco_NW_antitop_pt_NOSYS',
+                    'reco_NW_nu_antitop_eta_NOSYS', 'reco_NW_nu_antitop_m_NOSYS', 'reco_NW_nu_antitop_phi_NOSYS', 
+                    'reco_NW_nu_antitop_pt_NOSYS', 'reco_NW_nu_top_eta_NOSYS', 'reco_NW_nu_top_m_NOSYS',
+                    'reco_NW_nu_top_phi_NOSYS', 'reco_NW_nu_top_pt_NOSYS', 'reco_NW_top_eta_NOSYS', 
+                    'reco_NW_top_m_NOSYS', 'reco_NW_top_phi_NOSYS', 'reco_NW_top_pt_NOSYS'],
     }
 }
 
@@ -127,8 +142,16 @@ for col in feature_dict['muon_features']['columns']:
     for idx in feature_dict['muon_features']['indices_to_keep']:
         features_to_keep.append(f"{col}_{idx}")
 
-# MET
+# MET (Missing Energy Transverse)
 for col in feature_dict['met_features']['columns']:
+    features_to_keep.append(col)
+
+# RECO EM (Reconstructed electromagnetic)
+for col in feature_dict['reco_EM_features']['columns']:
+    features_to_keep.append(col)
+
+# RECO NW (Reconstructed neutrino weighting)
+for col in feature_dict['reco_NW_features']['columns']:
     features_to_keep.append(col)
 
 print(f"\nKeeping {len(features_to_keep)} features for X")
@@ -147,6 +170,9 @@ columns_to_load.extend(feature_dict['jet_features']['columns'])
 columns_to_load.extend(feature_dict['electron_features']['columns'])
 columns_to_load.extend(feature_dict['muon_features']['columns'])
 columns_to_load.extend(feature_dict['met_features']['columns'])
+columns_to_load.extend(feature_dict['reco_EM_features']['columns'])
+columns_to_load.extend(feature_dict['reco_NW_features']['columns'])
+
 
 if (not use_direct_regression) or (any(t in ["cos_theta_star", "cos_theta_ttbar", "cos_x_plus_minus", "cos_N_plus_minus"] for t in direct_targets)):
     columns_to_load.extend([f'parton_{p}_{s}' for p in ['top','antitop'] for s in ['pt','phi','eta','m']])
@@ -175,13 +201,6 @@ X_features = []
 
 # For X features with jagged arrays, pad and fill with none then append to X features array
 
-for col in feature_dict['jet_features']['columns']:
-    data = tree_awk[col]
-    padded = ak.pad_none(data, feature_dict['jet_features']['n_jets'], clip=True)
-    filled = ak.fill_none(padded, 0.0)
-    selected_features = filled[:, feature_dict['jet_features']['indices_to_keep']]
-    X_features.append(selected_features)
-
 for col in feature_dict['electron_features']['columns']:
     data = tree_awk[col]
     padded = ak.pad_none(data, feature_dict['electron_features']['n_objects'], clip=True)
@@ -200,6 +219,21 @@ for col in feature_dict['met_features']['columns']:
     data = tree_awk[col] 
     X_features.append(data)
 
+for col in feature_dict['reco_EM_features']['columns']:
+    data = tree_awk[col] 
+    X_features.append(data)
+
+for col in feature_dict['reco_NW_features']['columns']:
+    data = tree_awk[col] 
+    X_features.append(data)
+
+for col in feature_dict['jet_features']['columns']:
+    data = tree_awk[col]
+    padded = ak.pad_none(data, feature_dict['jet_features']['n_jets'], clip=True)
+    filled = ak.fill_none(padded, 0.0)
+    selected_features = filled[:, feature_dict['jet_features']['indices_to_keep']]
+    X_features.append(selected_features)
+
 # Stack
 X = np.column_stack([ak.to_numpy(part) for part in X_features])
 
@@ -213,7 +247,6 @@ if use_truth_lepton or any(t in ["cos_x_plus_minus", "cos_N_plus_minus"] for t i
     # Build lepton plus and minus parton (Truth) 4-vectors
     lepP_truth = vector.zip({s: tree_awk[f"parton_lepton_plus_{s}"] for s in ["pt", "phi", "eta", "m"]})
     lepM_truth = vector.zip({s: tree_awk[f"parton_lepton_minus_{s}"] for s in ["pt", "phi", "eta", "m"]})
-
     
     if use_truth_lepton:
         # Stack
@@ -357,6 +390,7 @@ else:
     top_vec = vector.zip({s: tree_awk[f"parton_top_{s}"] for s in ["pt", "phi", "eta", "m"]})
     antitop_vec = vector.zip({s: tree_awk[f"parton_antitop_{s}"] for s in ["pt", "phi", "eta", "m"]})
 
+    # Add to target
     target = np.column_stack([
         ak.to_numpy(top_vec.px), ak.to_numpy(top_vec.py), ak.to_numpy(top_vec.pz), ak.to_numpy(top_vec.E),
         ak.to_numpy(antitop_vec.px), ak.to_numpy(antitop_vec.py), ak.to_numpy(antitop_vec.pz), ak.to_numpy(antitop_vec.E)
